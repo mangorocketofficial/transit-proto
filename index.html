@@ -9,8 +9,10 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #22262d; color: #e6e9ee;
   font-family: system-ui, 'Malgun Gothic', sans-serif; user-select: none; -webkit-user-select: none; }
 body { display: flex; flex-direction: column; height: 100dvh; }
-#hud { display: flex; align-items: center; gap: 10px; padding: 3px 8px; background: #2b3039; font-size: 13px; white-space: nowrap; }
-#hud b { font-size: 15px; color: #fff; }
+#hud { display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: #2b3039; font-size: 13px; white-space: nowrap; }
+#hud b { font-size: 14px; color: #fff; }
+#hud button { padding: 3px 7px; min-height: 28px; font-size: 12.5px; }
+#dayBar { width: 60px !important; }
 #hud .sp { flex: 1; }
 #dayBar { width: 90px; height: 8px; background: #454c58; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
 #dayFill { height: 100%; width: 0; background: #ffd166; }
@@ -43,8 +45,8 @@ canvas { display: block; touch-action: none; }
   <span>선로 <b id="track">0</b></span>
   <span>다리 <b id="bridge">0</b></span>
   <span>여유 <b id="spare">0</b></span>
-  <span>최고 <b id="best">-</b></span>
   <span class="sp"></span>
+  <button id="muteBtn">소리 켬</button>
   <button data-speed="0">멈춤</button>
   <button data-speed="1" class="on">1배</button>
   <button data-speed="2">2배</button>
@@ -83,6 +85,8 @@ canvas { display: block; touch-action: none; }
     </div></div>
   </div>
 </div>
+<script src="audio.js"></script>
+<script src="render.js"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -127,7 +131,7 @@ const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 let districts, stops, lines, sel, track, spare, day, clock, delivered, over, stopTimer, D, rewardOpts, river, bridges;
 let hubs, hubMode, now, pendingStop, cleared;
-let started = false, speed = 1, drawing = false, pointer = null, msg = '', msgUntil = 0, pops = [];
+let started = false, speed = 1, drawing = false, pointer = null, msg = '', msgUntil = 0, lastPhase = 'am';
 let scale = 1, ox = 0, oy = 0, dpr = 1;
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -184,8 +188,9 @@ function pickStopPos(d) {
 }
 
 function createStop(p, d) {
-  const s = { idx: stops.length, x: p.x, y: p.y, d: d.id, wait: [], over: 0, acc: Math.random(), hub: false };
+  const s = { idx: stops.length, x: p.x, y: p.y, d: d.id, wait: [], over: 0, acc: Math.random(), hub: false, born: performance.now() / 1000 };
   stops.push(s);
+  if (started) { fxRing(s.x, s.y, d.color, 46, 0.9, 4); fxBurst(s.x, s.y, d.color, 10, 80); sfxNewStop(); }
   rebuildD();
   return s;
 }
@@ -246,8 +251,9 @@ function appendError(l, s) {
 
 function append(l, s) {
   const err = appendError(l, s);
-  if (err) { if (err !== 'same') flash(err); return false; }
+  if (err) { if (err !== 'same') { flash(err); sfxError(); } return false; }
   l.stops.push(s);
+  fxRing(s.x, s.y, l.color, 26, 0.45, 3); sfxConnect(l.stops.length - 1);
   if (l.stops.length === 2 || l.vehicles.length !== 1 + l.extra) resetVehicles(l);
   for (const v of l.vehicles) v.j = null;
   rebuildD();
@@ -274,7 +280,7 @@ function clearLine(l) {
 function addVehicle(l) {
   if (l.stops.length < 2) return flash('먼저 노선을 그리세요');
   if (spare[l.mode] < 1) return flash('여유 ' + (l.mode === 'bus' ? '버스' : '열차') + '가 없습니다');
-  spare[l.mode]--; l.extra++; resetVehicles(l); rebuildD();
+  spare[l.mode]--; l.extra++; resetVehicles(l); rebuildD(); sfxVehicle();
 }
 function removeVehicle(l) {
   if (l.extra < 1) return flash('뺄 수 있는 차량이 없습니다');
@@ -348,7 +354,11 @@ function exchange(l, v) {
   const onward = p => { const dd = D[p.dest]; return dd[ni] < Infinity && dd[nj] + w <= dd[ni] + 1e-6; };
   const keep = [];
   for (const p of v.load) {
-    if (s.d === p.dest) { delivered++; pops.push({ x: s.x, y: s.y, t: 0 }); }
+    if (s.d === p.dest) {
+      delivered++;
+      const col = districts[p.dest].color;
+      fxBurst(s.x, s.y, col, 5, 60); fxFloat(s.x, s.y, '+1', '#1a8f3a'); sfxDeliver(p.dest);
+    }
     else if (onward(p)) keep.push(p);
     else { p.ready = now + transferTime(s); s.wait.push(p); }
   }
@@ -403,8 +413,8 @@ function step(dt) {
     if (s.over >= 1) over = true;
   }
   for (const l of lines) for (const v of l.vehicles) moveVehicle(l, v, dt);
-  for (const p of pops) p.t += dt;
-  pops = pops.filter(p => p.t < 0.6);
+  if (phase() !== lastPhase) { lastPhase = phase(); sfxPhase(); }
+  if (stops.some(s => s.over > 0.5)) sfxWarn();
   if (over) gameOver();
 }
 
@@ -431,10 +441,13 @@ function offerReward() {
     : day + '일차 종료 — 하나를 고르세요';
   rewardOpts.forEach((o, i) => { $('r' + i).textContent = o.text; });
   $('reward').classList.remove('hide');
+  sfxDayEnd();
 }
 function takeReward(i) {
   rewardOpts[i].run();
   rewardOpts = null; day++;
+  sfxReward();
+  for (const col of ['#ffd166', '#ef476f', '#06d6a0', '#3a86ff']) fxBurst(W / 2 + Math.random() * 200 - 100, H / 2, col, 14, 160);
   $('reward').classList.add('hide');
   renderTools();
 }
@@ -447,25 +460,24 @@ function newGame() {
   genMap(); stops = []; makeLines();
   track = START_TRACK; spare = { ...START_SPARE }; bridges = START_BRIDGES; hubs = START_HUBS; day = 1;
   hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
-  stopTimer = STOP_INTERVAL; rewardOpts = null; pops = []; drawing = false;
+  stopTimer = STOP_INTERVAL; rewardOpts = null; drawing = false; lastPhase = 'am'; bgDirty = true;
   rebuildD();
   // 주거 2곳, 업무 1곳, 상업 1곳에 정류장 하나씩
   const pick = (type, k) => districts.filter(d => d.type === type).slice(0, k).forEach(addStop);
   pick('R', 2); pick('O', 1); pick('C', 1);
   sel = lines[0];
   $('over').classList.add('hide'); $('reward').classList.add('hide');
-  $('best').textContent = loadBest() || '-';
   renderTools();
 }
 
 function gameOver() {
+  FX.shake = 1; FX.flash = 1; sfxOver();
   const prev = loadBest(), isBest = delivered > prev;
   if (isBest) saveBest(delivered);
   $('oDay').textContent = day;
   $('oDelivered').textContent = delivered;
   $('oBest').textContent = isBest ? '최고 기록 갱신!' : '최고 기록 ' + prev + '명';
   $('over').classList.remove('hide');
-  $('best').textContent = loadBest() || '-';
 }
 
 // ---------- 왼쪽 도구 ----------
@@ -480,7 +492,7 @@ function renderTools() {
     b.innerHTML = '<span class="sw" style="background:' + l.color + ';border:1px solid #999"></span>' + MODES[l.mode].name + ' ' + l.n
       + (hw < Infinity ? '<small>' + Math.round(hw) + '초</small>' : '');
     b.title = '배차 간격';
-    b.onclick = () => { sel = l; hubMode = false; renderTools(); };
+    b.onclick = () => { sel = l; hubMode = false; sfxClick(); renderTools(); };
     box.appendChild(b);
   }
   box.appendChild(document.createElement('hr'));
@@ -492,8 +504,8 @@ function renderTools() {
   };
   act('차량 +', addVehicle);
   act('차량 −', removeVehicle);
-  act('한 칸 취소', undoLast);
-  act('노선 지우기', clearLine);
+  act('한 칸 취소', l => { undoLast(l); sfxUndo(); });
+  act('노선 지우기', l => { clearLine(l); sfxUndo(); });
   const hb = document.createElement('button');
   hb.className = 'act' + (hubMode ? ' on' : '');
   hb.textContent = '환승 센터 ' + hubs;
@@ -530,6 +542,7 @@ cv.addEventListener('pointerdown', e => {
   if (hubMode) {
     if (s.hub) return flash('이미 환승 센터입니다');
     s.hub = true; hubs--; hubMode = false;
+    fxRing(s.x, s.y, '#1d2330', 50, 0.8, 5); fxBurst(s.x, s.y, '#ffd166', 14, 90); sfxHub();
     rebuildD(); renderTools();
     return;
   }
@@ -556,114 +569,14 @@ const endDraw = () => {
 cv.addEventListener('pointerup', endDraw);
 cv.addEventListener('pointercancel', endDraw);
 
-// ---------- 그리기 ----------
-function lineOffset(l) {
-  const k = lines.indexOf(l) - 3;
-  return { x: k * 2.5, y: k * 2.5 };
-}
-
-function draw(t) {
-  const c = ctx, s = scale * dpr;
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  c.fillStyle = '#22262d'; c.fillRect(0, 0, cv.width, cv.height);
-  c.setTransform(s, 0, 0, s, ox * dpr, oy * dpr);
-  c.fillStyle = '#ece8df'; c.fillRect(0, 0, W, H);
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-
-  for (const d of districts) {
-    c.globalAlpha = 0.28; c.fillStyle = d.color;
-    c.beginPath(); c.arc(d.x, d.y, d.r, 0, Math.PI * 2); c.fill();
-    c.globalAlpha = 0.75; c.font = 'bold 13px sans-serif';
-    c.fillText(TYPE_NAME[d.type], d.x, Math.min(H - 10, d.y + d.r - 12));
-    c.globalAlpha = 1;
-  }
-
-  // 강
-  c.strokeStyle = '#8fc3ea'; c.lineWidth = 16; c.lineJoin = 'round';
-  c.beginPath(); river.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); c.stroke();
-
-  // 노선
-  c.lineJoin = 'round'; c.lineCap = 'round';
-  for (const l of lines) {
-    if (l.stops.length < 1) continue;
-    const o = lineOffset(l), pts = l.stops.map(p => ({ x: p.x + o.x, y: p.y + o.y }));
-    if (drawing && l === sel && pointer) pts.push(pointer);
-    const path = () => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); };
-    if (l === sel) { path(); c.strokeStyle = 'rgba(255,200,0,0.55)'; c.lineWidth = MODES[l.mode].w + 8; c.stroke(); }
-    path(); c.strokeStyle = l.color; c.lineWidth = MODES[l.mode].w; c.stroke();
-    if (l.mode === 'sub') { path(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.setLineDash([6, 6]); c.stroke(); c.setLineDash([]); }
-  }
-
-  // 곧 생길 정류장 예고
-  if (pendingStop) {
-    c.strokeStyle = pendingStop.d.color; c.lineWidth = 2; c.setLineDash([4, 4]);
-    c.beginPath(); c.arc(pendingStop.x, pendingStop.y, 11, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
-    c.fillStyle = '#333'; c.font = 'bold 10px sans-serif';
-    c.fillText(Math.ceil(Math.max(0, stopTimer)) + '초', pendingStop.x, pendingStop.y);
-  }
-
-  // 정류장과 기다리는 승객
-  for (const st of stops) {
-    const d = districts[st.d];
-    if (st.hub) {
-      c.fillStyle = '#fff'; c.strokeStyle = '#222'; c.lineWidth = 2;
-      c.beginPath(); c.arc(st.x, st.y, 15, 0, Math.PI * 2); c.fill(); c.stroke();
-    }
-    if (st.over > 0) {
-      const blink = st.over > 0.6 && Math.floor(t * 4) % 2 === 0;
-      c.strokeStyle = blink ? '#000' : '#e02020'; c.lineWidth = 5;
-      c.beginPath(); c.arc(st.x, st.y, st.hub ? 21 : 17, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, st.over)); c.stroke();
-    }
-    c.fillStyle = '#fff'; c.strokeStyle = d.color; c.lineWidth = 4;
-    c.beginPath(); c.arc(st.x, st.y, 10, 0, Math.PI * 2); c.fill(); c.stroke();
-    st.wait.forEach((p, i) => {
-      if (i >= 16) return;
-      c.fillStyle = districts[p.dest].color;
-      c.beginPath(); c.arc(st.x + 17 + (i % 4) * 8, st.y - 8 + Math.floor(i / 4) * 8, 3.3, 0, Math.PI * 2); c.fill();
-      c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 0.8; c.stroke();
-    });
-    if (st.wait.length > capOf(st)) {
-      c.fillStyle = '#c01818'; c.font = 'bold 11px sans-serif';
-      c.fillText(st.wait.length + '명', st.x, st.y - 19);
-    }
-  }
-
-  // 차량
-  for (const l of lines) {
-    const o = lineOffset(l), m = MODES[l.mode], bw = l.mode === 'sub' ? 30 : 22, bh = l.mode === 'sub' ? 15 : 13;
-    for (const v of l.vehicles) {
-      const a = l.stops[v.i], b = l.stops[v.j == null ? v.i : v.j];
-      if (!a || !b) continue;
-      const x = a.x + (b.x - a.x) * v.t + o.x, y = a.y + (b.y - a.y) * v.t + o.y;
-      c.save(); c.translate(x, y);
-      if (a !== b) { let ang = Math.atan2(b.y - a.y, b.x - a.x); if (Math.abs(ang) > Math.PI / 2) ang += Math.PI; c.rotate(ang); }
-      c.fillStyle = l.color; c.strokeStyle = '#fff'; c.lineWidth = 1.5;
-      c.fillRect(-bw / 2, -bh / 2, bw, bh); c.strokeRect(-bw / 2, -bh / 2, bw, bh);
-      c.fillStyle = v.load.length >= m.cap ? '#ffd166' : '#fff'; c.font = 'bold 11px sans-serif';
-      c.fillText(v.load.length + '/' + m.cap, 0, 0.5);
-      c.restore();
-    }
-  }
-
-  for (const p of pops) {
-    c.globalAlpha = 1 - p.t / 0.6; c.fillStyle = '#1a8f3a'; c.font = 'bold 13px sans-serif';
-    c.fillText('+1', p.x, p.y - 16 - p.t * 30); c.globalAlpha = 1;
-  }
-
-  if (msg && performance.now() < msgUntil) {
-    c.font = 'bold 15px sans-serif';
-    const tw = c.measureText(msg).width + 22;
-    c.fillStyle = 'rgba(30,30,30,0.9)'; c.fillRect(W / 2 - tw / 2, H - 42, tw, 28);
-    c.fillStyle = '#fff'; c.fillText(msg, W / 2, H - 28);
-  }
-}
-
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000) * speed;
   last = now;
   if (started && !over && !rewardOpts && dt > 0) step(dt);
   draw(now / 1000);
+  const crowd = stops.reduce((m, s) => Math.max(m, s.over), 0);
+  bgmTick(phase(), crowd, speed === 0 || !started || over || !!rewardOpts);
   $('day').textContent = day;
   // 다음 시간대를 10초 전부터 예고
   const f = clock / DAY, cut = f < 0.35 ? 0.35 : f < 0.65 ? 0.65 : 1, left = (cut - f) * DAY;
@@ -681,7 +594,9 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
   speed = +b.dataset.speed;
   document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
 });
-$('startBtn').onclick = () => { $('start').classList.add('hide'); started = true; };
+$('startBtn').onclick = () => { $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); };
+$('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').textContent = AU.muted ? '소리 끔' : '소리 켬'; };
+addEventListener('pointerdown', audioInit, { passive: true });
 $('againBtn').onclick = newGame;
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
