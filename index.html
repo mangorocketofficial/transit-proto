@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>노선 짜기 프로토타입</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #22262d; color: #e6e9ee;
+  font-family: system-ui, 'Malgun Gothic', sans-serif; user-select: none; -webkit-user-select: none; }
+body { display: flex; flex-direction: column; height: 100dvh; }
+#hud { display: flex; align-items: center; gap: 10px; padding: 3px 8px; background: #2b3039; font-size: 13px; white-space: nowrap; }
+#hud b { font-size: 15px; color: #fff; }
+#hud .sp { flex: 1; }
+#dayBar { width: 90px; height: 8px; background: #454c58; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+#dayFill { height: 100%; width: 0; background: #ffd166; }
+#main { flex: 1; display: flex; min-height: 0; }
+#tools { display: flex; flex-direction: column; gap: 3px; padding: 4px; background: #2b3039; width: 100px; overflow-y: auto; overflow-x: hidden; }
+button { font: inherit; color: #fff; background: #3a414d; border: 2px solid transparent; border-radius: 7px;
+  padding: 4px 8px; min-height: 30px; cursor: pointer; touch-action: manipulation; }
+button.on { border-color: #fff; }
+button:disabled { opacity: 0.4; }
+#tools button { text-align: left; font-size: 12.5px; display: flex; align-items: center; gap: 4px; white-space: nowrap; padding: 4px 5px; }
+#tools .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+#tools small { margin-left: auto; color: #aab3c0; font-size: 10.5px; }
+#tools .act { justify-content: center; background: #4a5362; }
+#tools hr { width: 100%; border: 0; border-top: 1px solid #454c58; margin: 2px 0; }
+#wrap { flex: 1; position: relative; min-width: 0; }
+canvas { display: block; touch-action: none; }
+.overlay { position: absolute; inset: 0; background: rgba(20,22,26,0.85); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.overlay.hide { display: none; }
+.panel { background: #2b3039; border-radius: 12px; padding: 16px 20px; max-width: 580px; max-height: 100%; overflow: auto; line-height: 1.5; font-size: 14px; }
+.panel h2 { margin: 0 0 6px; font-size: 19px; }
+.panel ul { margin: 6px 0 10px; padding-left: 18px; }
+.panel button { width: 100%; background: #2f7d45; font-size: 15px; min-height: 42px; margin-top: 6px; position: sticky; bottom: 0; }
+@media (max-height: 480px) { .panel { font-size: 12.5px; line-height: 1.4; padding: 10px 16px; } .panel h2 { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div id="hud">
+  <span><b id="day">1</b>일차 <b id="phase"></b> <span id="dayBar"><span id="dayFill" style="display:block"></span></span></span>
+  <span>수송 <b id="delivered">0</b></span>
+  <span>선로 <b id="track">0</b></span>
+  <span>다리 <b id="bridge">0</b></span>
+  <span>여유 <b id="spare">0</b></span>
+  <span>최고 <b id="best">-</b></span>
+  <span class="sp"></span>
+  <button data-speed="0">멈춤</button>
+  <button data-speed="1" class="on">1배</button>
+  <button data-speed="2">2배</button>
+</div>
+<div id="main">
+  <div id="tools"></div>
+  <div id="wrap">
+    <canvas id="cv"></canvas>
+    <div id="start" class="overlay"><div class="panel">
+      <h2>노선 짜기</h2>
+      정류장에 승객이 넘치지 않게 버스와 지하철 노선을 짜세요.
+      <ul>
+        <li>승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.</li>
+        <li>왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 끝 정류장에서 다시 끌면 연장됩니다.</li>
+        <li><b>버스</b>는 느리고 6명만 타지만 어디든 깔 수 있습니다. <b>지하철</b>은 빠르고 16명이 타지만 남은 <b>선로 길이</b>만큼만 깔 수 있고, 설 때마다 오래 걸립니다.</li>
+        <li><b>강</b>: 버스 노선은 건널 때마다 다리 1개를 씁니다. 지하철은 터널로 건너지만 선로가 120 더 듭니다.</li>
+        <li><b>환승</b>에는 2초가 걸리고, 승객은 배차 간격(노선 버튼의 초)까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.</li>
+        <li><b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다.</li>
+        <li>아침에는 주거 → 업무, 저녁에는 업무·상업 → 주거로 몰립니다. 새 정류장 자리는 미리 점선으로 보입니다.</li>
+        <li>하루가 끝나면 보상 셋 중 하나를 고릅니다. 8일을 넘기면 완주입니다.</li>
+        <li>정류장에 8명 넘게 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.</li>
+      </ul>
+      <button id="startBtn">시작</button>
+    </div></div>
+    <div id="reward" class="overlay hide"><div class="panel">
+      <h2 id="rTitle"></h2>
+      <button id="r0"></button>
+      <button id="r1"></button>
+      <button id="r2"></button>
+    </div></div>
+    <div id="over" class="overlay hide"><div class="panel">
+      <h2>정류장 마비!</h2>
+      <p><b id="oDay"></b>일차까지 버팀 · 수송한 승객 <b id="oDelivered"></b>명</p>
+      <p id="oBest"></p>
+      <button id="againBtn">다시 하기</button>
+    </div></div>
+  </div>
+</div>
+<script>
+'use strict';
+// ---------- 수치 ----------
+const W = 900, H = 420;
+const DAY = 90;                 // 하루 길이(초)
+const MODES = {
+  bus: { name: '버스', cap: 6, speed: 55, w: 3, dwell: 0.5 },
+  sub: { name: '지하철', cap: 16, speed: 150, w: 7, dwell: 1.2 },   // 지하철은 설 때마다 오래 걸린다
+};
+const BUS_COL = ['#3d3d3d', '#8d5524', '#c2185b', '#00838f', '#5e35b1'];
+const SUB_COL = ['#111111', '#b71c1c', '#0d47a1'];
+const START_BUS = 3, START_SUB = 1, START_TRACK = 550;
+const START_SPARE = { bus: 1, sub: 0 };
+const START_HUBS = 1;
+const TRANSFER = 2;             // 갈아탈 때 걸리는 시간(초)
+const HUB_TRANSFER = 0.5, HUB_CAP = 20;   // 환승 센터: 빨리 갈아타고 많이 기다릴 수 있다
+const FORECAST = 8;             // 새 정류장 자리를 미리 보여 주는 시간(초)
+const GOAL_DAY = 8;             // 이 날을 넘기면 완주
+const START_BRIDGES = 2;        // 버스 노선이 강을 건널 수 있는 횟수
+const TUNNEL_COST = 120;        // 지하철이 강을 건널 때 더 드는 선로
+const TYPE_NAME = { R: '주거', O: '업무', C: '상업' };
+const DCOL = { R: ['#2e9e48', '#8aa80f', '#12a58a'], O: ['#2f6fe0', '#8a52e0'], C: ['#e57f17'] };
+const STOP_CAP = 8;             // 이보다 많이 기다리면 마비 고리가 찬다
+const OVER_SEC = 30;
+const STOP_INTERVAL = 22;       // 새 정류장이 생기는 간격(초)
+const MAX_STOPS_PER_DISTRICT = 4;
+const MAX_LINE_STOPS = 8;
+const BASE_RATE = 0.10;         // 정류장 하나가 초당 만드는 승객(시간대 가중 전)
+const DAY_GROWTH = 0.22;        // 하루마다 승객이 늘어나는 비율
+const BEST_KEY = 'transit-proto-best';
+// 시간대별 승객 발생량(출발 구역 종류 기준)과 목적지 비율
+const GEN = { am: { R: 1, O: 0.12, C: 0.12 }, mid: { R: 0.4, O: 0.45, C: 0.45 }, pm: { R: 0.12, O: 1, C: 0.7 } };
+const DEST = {
+  am: { R: { O: 0.75, C: 0.25 }, O: { R: 0.5, C: 0.5 }, C: { R: 0.5, O: 0.5 } },
+  mid: { R: { C: 0.6, O: 0.4 }, O: { C: 0.7, R: 0.3 }, C: { R: 0.6, O: 0.4 } },
+  pm: { R: { C: 0.6, O: 0.4 }, O: { R: 0.85, C: 0.15 }, C: { R: 0.9, O: 0.1 } },
+};
+const PHASE_NAME = { am: '아침 출근', mid: '낮', pm: '저녁 퇴근' };
+
+// ---------- 상태 ----------
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let districts, stops, lines, sel, track, spare, day, clock, delivered, over, stopTimer, D, rewardOpts, river, bridges;
+let hubs, hubMode, now, pendingStop, cleared;
+let started = false, speed = 1, drawing = false, pointer = null, msg = '', msgUntil = 0, pops = [];
+let scale = 1, ox = 0, oy = 0, dpr = 1;
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const phase = () => { const f = clock / DAY; return f < 0.35 ? 'am' : f < 0.65 ? 'mid' : 'pm'; };
+const flash = t => { msg = t; msgUntil = performance.now() + 1600; };
+// 두 선분이 실제로 교차하는지
+function segCross(p1, p2, p3, p4) {
+  const d = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+// 구간 a-b가 강을 건너는 횟수
+function crossings(a, b) {
+  let n = 0;
+  for (let i = 1; i < river.length; i++) if (segCross(a, b, river[i - 1], river[i])) n++;
+  return n;
+}
+const lineCross = l => l.stops.reduce((s, p, i) => s + (i ? crossings(l.stops[i - 1], p) : 0), 0);
+const segTrack = (a, b) => dist(a, b) + TUNNEL_COST * crossings(a, b);
+const trackUsed = () => lines.filter(l => l.mode === 'sub').reduce((s, l) => s + l.stops.reduce((t, p, i) => t + (i ? segTrack(l.stops[i - 1], p) : 0), 0), 0);
+const bridgesUsed = () => lines.filter(l => l.mode === 'bus').reduce((s, l) => s + lineCross(l), 0);
+const isLoop = l => l.stops.length > 3 && l.stops[0] === l.stops[l.stops.length - 1];
+const capOf = s => s.hub ? HUB_CAP : STOP_CAP;
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+// ---------- 지도 ----------
+function genMap() {
+  const types = shuffle(['R', 'R', 'R', 'O', 'O', 'C']);
+  const used = { R: 0, O: 0, C: 0 };
+  districts = [];
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) {
+    const type = types[r * 3 + c];
+    districts.push({
+      id: districts.length, type, color: DCOL[type][used[type]++],
+      x: 150 + 300 * c + (Math.random() * 60 - 30), y: 105 + 210 * r + (Math.random() * 30 - 15),
+      r: 80 + Math.random() * 10,
+    });
+  }
+  // 강: 구역 열 사이를 위에서 아래로 흐른다
+  const base = Math.random() < 0.5 ? 300 : 600, ph = Math.random() * 6;
+  river = [];
+  for (let y = -20; y <= H + 20; y += 40) river.push({ x: base + Math.sin(y / 70 + ph) * 9, y });
+}
+
+function pickStopPos(d) {
+  for (let i = 0; i < 200; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.random() * (d.r - 24);
+    const p = { x: d.x + Math.cos(a) * rr, y: d.y + Math.sin(a) * rr };
+    if (p.y < 26 || p.y > H - 26 || p.x < 26 || p.x > W - 40) continue;
+    if (stops.every(s => dist(s, p) > 52)) return p;
+  }
+  return null;
+}
+
+function createStop(p, d) {
+  const s = { idx: stops.length, x: p.x, y: p.y, d: d.id, wait: [], over: 0, acc: Math.random(), hub: false };
+  stops.push(s);
+  rebuildD();
+  return s;
+}
+
+function addStop(d) { const p = pickStopPos(d); return p ? createStop(p, d) : null; }
+
+// 다음 정류장 자리를 미리 정한다(예고용). 정류장이 적은 구역부터 채운다
+function planStop() {
+  const count = d => stops.filter(s => s.d === d.id).length;
+  const open = districts.filter(d => count(d) < MAX_STOPS_PER_DISTRICT);
+  if (!open.length) return;
+  const min = Math.min(...open.map(count));
+  const pool = open.filter(d => count(d) === min);
+  const d = pool[Math.floor(Math.random() * pool.length)], p = pickStopPos(d);
+  if (p) pendingStop = { x: p.x, y: p.y, d };
+}
+
+function spawnStop() {
+  if (!pendingStop) planStop();
+  if (pendingStop) { createStop(pendingStop, pendingStop.d); flash('새 정류장이 생겼습니다'); }
+  pendingStop = null;
+}
+
+// ---------- 노선 ----------
+function makeLines() {
+  lines = [];
+  BUS_COL.forEach((c, i) => lines.push({ mode: 'bus', n: i + 1, color: c, stops: [], vehicles: [], extra: 0, unlocked: i < START_BUS }));
+  SUB_COL.forEach((c, i) => lines.push({ mode: 'sub', n: i + 1, color: c, stops: [], vehicles: [], extra: 0, unlocked: i < START_SUB }));
+}
+
+function dumpLoads(l) {
+  for (const v of l.vehicles) { if (l.stops[v.i]) l.stops[v.i].wait.push(...v.load); v.load = []; }
+}
+
+// 차량 수를 맞추고 노선 위에 고르게 다시 세운다
+function resetVehicles(l) {
+  dumpLoads(l);
+  l.vehicles = [];
+  if (l.stops.length < 2) return;
+  const count = 1 + l.extra, n = l.stops.length - (isLoop(l) ? 1 : 0);
+  for (let k = 0; k < count; k++) l.vehicles.push({ i: Math.floor(k * n / count) % n, j: null, t: 0, dir: 1, dwell: 0, load: [] });
+}
+
+// 노선 끝에 정류장을 붙인다. 안 되면 이유를 돌려준다
+function appendError(l, s) {
+  const n = l.stops.length;
+  if (n && isLoop(l)) return '순환 노선은 더 늘릴 수 없습니다';
+  if (n && l.stops[n - 1] === s) return 'same';
+  const closing = n >= 3 && l.stops[0] === s;
+  if (l.stops.includes(s) && !closing) return 'same';
+  if (n >= MAX_LINE_STOPS + (closing ? 1 : 0)) return '한 노선은 정류장 ' + MAX_LINE_STOPS + '곳까지입니다';
+  if (l.mode === 'sub' && n && trackUsed() + segTrack(l.stops[n - 1], s) > track) {
+    return crossings(l.stops[n - 1], s) ? '선로가 모자랍니다 (강 밑 터널은 +' + TUNNEL_COST + ')' : '선로가 모자랍니다';
+  }
+  if (l.mode === 'bus' && n && bridgesUsed() + crossings(l.stops[n - 1], s) > bridges && crossings(l.stops[n - 1], s)) return '다리가 모자랍니다';
+  return '';
+}
+
+function append(l, s) {
+  const err = appendError(l, s);
+  if (err) { if (err !== 'same') flash(err); return false; }
+  l.stops.push(s);
+  if (l.stops.length === 2 || l.vehicles.length !== 1 + l.extra) resetVehicles(l);
+  for (const v of l.vehicles) v.j = null;
+  rebuildD();
+  return true;
+}
+
+function undoLast(l) {
+  if (!l.stops.length) return;
+  dumpLoads(l);
+  l.stops.pop();
+  if (l.stops.length < 2) l.stops = [];
+  resetVehicles(l);
+  rebuildD();
+}
+
+function clearLine(l) {
+  dumpLoads(l);
+  l.stops = [];
+  spare[l.mode] += l.extra; l.extra = 0;
+  resetVehicles(l);
+  rebuildD();
+}
+
+function addVehicle(l) {
+  if (l.stops.length < 2) return flash('먼저 노선을 그리세요');
+  if (spare[l.mode] < 1) return flash('여유 ' + (l.mode === 'bus' ? '버스' : '열차') + '가 없습니다');
+  spare[l.mode]--; l.extra++; resetVehicles(l); rebuildD();
+}
+function removeVehicle(l) {
+  if (l.extra < 1) return flash('뺄 수 있는 차량이 없습니다');
+  spare[l.mode]++; l.extra--; resetVehicles(l); rebuildD();
+}
+
+// ---------- 경로 탐색 ----------
+const segCost = (l, a, b) => dist(a, b) / MODES[l.mode].speed + MODES[l.mode].dwell;
+function roundTrip(l) {
+  let t = 0;
+  for (let i = 1; i < l.stops.length; i++) t += segCost(l, l.stops[i - 1], l.stops[i]);
+  return isLoop(l) ? t : t * 2;
+}
+// 배차 간격: 한 바퀴 도는 시간을 차량 수로 나눈 값
+const headway = l => l.stops.length < 2 ? Infinity : roundTrip(l) / (1 + l.extra);
+const transferTime = s => s.hub ? HUB_TRANSFER : TRANSFER;
+
+// D[구역][노드] = 그 구역까지 걸리는 예상 시간.
+// 노드는 정류장(0..n-1)과 "노선 위의 정류장"(l.node0 + 순번) 두 종류다.
+// 정류장에서 노선에 타는 데에는 평균 대기(배차 간격의 절반)와 환승 시간이 든다.
+function rebuildD() {
+  const n = stops.length;
+  let N = n;
+  for (const l of lines) {
+    l.m = l.stops.length < 2 ? 0 : (isLoop(l) ? l.stops.length - 1 : l.stops.length);
+    l.node0 = N; N += l.m;
+  }
+  const radj = Array.from({ length: N }, () => []);     // 거꾸로 된 간선: radj[도착] = [출발, 비용]
+  const edge = (u, v, c) => radj[v].push([u, c]);
+  for (const l of lines) {
+    if (!l.m) continue;
+    const loop = isLoop(l), hw = headway(l);
+    for (let k = 0; k < l.m; k++) {
+      const s = l.stops[k], ln = l.node0 + k;
+      edge(s.idx, ln, hw / 2 + transferTime(s));
+      edge(ln, s.idx, 0);
+      if (k + 1 < l.stops.length) {
+        const c = segCost(l, s, l.stops[k + 1]), ln2 = l.node0 + ((k + 1) % l.m);
+        edge(ln, ln2, c);
+        if (!loop) edge(ln2, ln, c);                      // 순환선은 한 방향으로만 돈다
+      }
+    }
+  }
+  D = districts.map(d => {
+    const dd = new Array(N).fill(Infinity), done = new Array(N).fill(false);
+    for (const s of stops) if (s.d === d.id) dd[s.idx] = 0;
+    for (;;) {
+      let u = -1;
+      for (let i = 0; i < N; i++) if (!done[i] && dd[i] < Infinity && (u < 0 || dd[i] < dd[u])) u = i;
+      if (u < 0) break;
+      done[u] = true;
+      for (const [v, w] of radj[u]) if (dd[u] + w < dd[v]) dd[v] = dd[u] + w;
+    }
+    return dd;
+  });
+}
+
+// ---------- 진행 ----------
+function nextIdx(l, v) {
+  const n = l.stops.length;
+  if (isLoop(l)) return v.i + 1;
+  if (v.i + v.dir < 0 || v.i + v.dir > n - 1) v.dir = -v.dir;
+  return v.i + v.dir;
+}
+
+// 정류장에 도착: 목적지면 내리고, 이 차로 계속 가는 게 최선이 아니면 갈아타려고 내린다.
+// 기다리던 승객은 이 노선을 타는 것이 가만히 있는 것보다 나을 때만 탄다.
+function exchange(l, v) {
+  const s = l.stops[v.i], nxt = l.stops[v.j], cap = MODES[l.mode].cap, w = segCost(l, s, nxt);
+  const ni = l.node0 + (v.i % l.m), nj = l.node0 + (v.j % l.m);
+  const onward = p => { const dd = D[p.dest]; return dd[ni] < Infinity && dd[nj] + w <= dd[ni] + 1e-6; };
+  const keep = [];
+  for (const p of v.load) {
+    if (s.d === p.dest) { delivered++; pops.push({ x: s.x, y: s.y, t: 0 }); }
+    else if (onward(p)) keep.push(p);
+    else { p.ready = now + transferTime(s); s.wait.push(p); }
+  }
+  v.load = keep;
+  const rest = [];
+  for (const p of s.wait) {
+    if (v.load.length < cap && (p.ready || 0) <= now && onward(p) && D[p.dest][ni] < D[p.dest][s.idx] - 1e-6) v.load.push(p);
+    else rest.push(p);
+  }
+  s.wait = rest;
+}
+
+function moveVehicle(l, v, dt) {
+  const n = l.stops.length;
+  if (n < 2) return;
+  if (v.i > n - 1) { v.i = 0; v.t = 0; v.j = null; }
+  if (v.j == null || v.j > n - 1) { v.j = nextIdx(l, v); v.t = 0; exchange(l, v); }
+  if (v.dwell > 0) { v.dwell -= dt; return; }
+  v.t += MODES[l.mode].speed * dt / (dist(l.stops[v.i], l.stops[v.j]) || 1);
+  if (v.t >= 1) {
+    v.i = v.j; v.t = 0;
+    if (isLoop(l) && v.i === n - 1) v.i = 0;
+    v.j = nextIdx(l, v);
+    v.dwell = MODES[l.mode].dwell;
+    exchange(l, v);
+  }
+}
+
+function pickDest(s) {
+  const from = districts[s.d];
+  const has = d => d.id !== s.d && stops.some(x => x.d === d.id);
+  const w = DEST[phase()][from.type];
+  let roll = Math.random(), type = null;
+  for (const k in w) { if (roll < w[k]) { type = k; break; } roll -= w[k]; }
+  let pool = districts.filter(d => d.type === type && has(d));
+  if (!pool.length) pool = districts.filter(has);
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)].id : null;
+}
+
+function step(dt) {
+  clock += dt; now += dt;
+  if (clock >= DAY) { clock = 0; offerReward(); return; }
+  stopTimer -= dt;
+  if (stopTimer <= FORECAST && pendingStop === null) { planStop(); if (!pendingStop) pendingStop = false; }
+  if (stopTimer <= 0) { spawnStop(); stopTimer = STOP_INTERVAL; }
+  const ph = phase(), rate = BASE_RATE * (1 + (day - 1) * DAY_GROWTH);
+  for (const s of stops) {
+    s.acc += rate * GEN[ph][districts[s.d].type] * dt;
+    while (s.acc >= 1) { s.acc -= 1; const dest = pickDest(s); if (dest != null) s.wait.push({ dest }); }
+    if (s.wait.length > capOf(s)) s.over += dt / OVER_SEC;
+    else s.over = Math.max(0, s.over - dt / OVER_SEC * 0.7);
+    if (s.over >= 1) over = true;
+  }
+  for (const l of lines) for (const v of l.vehicles) moveVehicle(l, v, dt);
+  for (const p of pops) p.t += dt;
+  pops = pops.filter(p => p.t < 0.6);
+  if (over) gameOver();
+}
+
+// ---------- 보상 ----------
+function offerReward() {
+  const vehicles = [
+    { text: '버스 +2대', run: () => { spare.bus += 2; } },
+    { text: '지하철 열차 +1편성', run: () => { spare.sub += 1; } },
+  ];
+  const others = [
+    { text: '선로 +350', run: () => { track += 350; } },
+    { text: '다리 +1 (버스가 강을 건널 수 있는 횟수)', run: () => { bridges += 1; } },
+    { text: '환승 센터 +1 (정류장 하나: 수용 20명, 빠른 환승)', run: () => { hubs += 1; } },
+  ];
+  const bus = lines.find(l => l.mode === 'bus' && !l.unlocked);
+  const sub = lines.find(l => l.mode === 'sub' && !l.unlocked);
+  if (bus) others.push({ text: '버스 노선 +1 (버스 1대 포함)', run: () => { bus.unlocked = true; } });
+  if (sub) others.push({ text: '지하철 노선 +1 (열차 1편성, 선로 +200 포함)', run: () => { sub.unlocked = true; track += 200; } });
+  // 셋 중 하나는 반드시 차량 보상: 필요한 차량이 며칠씩 안 나오는 불운을 막는다
+  rewardOpts = shuffle([shuffle(vehicles)[0], ...shuffle(others).slice(0, 2)]);
+  const done = day === GOAL_DAY && !cleared;
+  if (done) cleared = true;
+  $('rTitle').textContent = done ? GOAL_DAY + '일 완주! 여기부터는 무한 모드입니다. 보상을 고르세요'
+    : day + '일차 종료 — 하나를 고르세요';
+  rewardOpts.forEach((o, i) => { $('r' + i).textContent = o.text; });
+  $('reward').classList.remove('hide');
+}
+function takeReward(i) {
+  rewardOpts[i].run();
+  rewardOpts = null; day++;
+  $('reward').classList.add('hide');
+  renderTools();
+}
+
+// ---------- 시작과 끝 ----------
+function loadBest() { try { return +localStorage.getItem(BEST_KEY) || 0; } catch (e) { return 0; } }
+function saveBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {} }
+
+function newGame() {
+  genMap(); stops = []; makeLines();
+  track = START_TRACK; spare = { ...START_SPARE }; bridges = START_BRIDGES; hubs = START_HUBS; day = 1;
+  hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
+  stopTimer = STOP_INTERVAL; rewardOpts = null; pops = []; drawing = false;
+  rebuildD();
+  // 주거 2곳, 업무 1곳, 상업 1곳에 정류장 하나씩
+  const pick = (type, k) => districts.filter(d => d.type === type).slice(0, k).forEach(addStop);
+  pick('R', 2); pick('O', 1); pick('C', 1);
+  sel = lines[0];
+  $('over').classList.add('hide'); $('reward').classList.add('hide');
+  $('best').textContent = loadBest() || '-';
+  renderTools();
+}
+
+function gameOver() {
+  const prev = loadBest(), isBest = delivered > prev;
+  if (isBest) saveBest(delivered);
+  $('oDay').textContent = day;
+  $('oDelivered').textContent = delivered;
+  $('oBest').textContent = isBest ? '최고 기록 갱신!' : '최고 기록 ' + prev + '명';
+  $('over').classList.remove('hide');
+  $('best').textContent = loadBest() || '-';
+}
+
+// ---------- 왼쪽 도구 ----------
+function renderTools() {
+  const box = $('tools');
+  box.innerHTML = '';
+  for (const l of lines) {
+    if (!l.unlocked) continue;
+    const b = document.createElement('button');
+    b.className = l === sel ? 'on' : '';
+    const hw = headway(l);
+    b.innerHTML = '<span class="sw" style="background:' + l.color + ';border:1px solid #999"></span>' + MODES[l.mode].name + ' ' + l.n
+      + (hw < Infinity ? '<small>' + Math.round(hw) + '초</small>' : '');
+    b.title = '배차 간격';
+    b.onclick = () => { sel = l; hubMode = false; renderTools(); };
+    box.appendChild(b);
+  }
+  box.appendChild(document.createElement('hr'));
+  const act = (text, fn) => {
+    const b = document.createElement('button');
+    b.className = 'act'; b.textContent = text;
+    b.onclick = () => { fn(sel); renderTools(); };
+    box.appendChild(b);
+  };
+  act('차량 +', addVehicle);
+  act('차량 −', removeVehicle);
+  act('한 칸 취소', undoLast);
+  act('노선 지우기', clearLine);
+  const hb = document.createElement('button');
+  hb.className = 'act' + (hubMode ? ' on' : '');
+  hb.textContent = '환승 센터 ' + hubs;
+  hb.disabled = hubs < 1;
+  hb.onclick = () => { hubMode = !hubMode; if (hubMode) flash('환승 센터로 만들 정류장을 누르세요'); renderTools(); };
+  box.appendChild(hb);
+}
+
+// ---------- 조작 ----------
+function resize() {
+  const box = cv.parentElement.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(box.width * dpr)); cv.height = Math.max(1, Math.round(box.height * dpr));
+  cv.style.width = box.width + 'px'; cv.style.height = box.height + 'px';
+  scale = Math.min(box.width / W, box.height / H);
+  ox = (box.width - W * scale) / 2; oy = (box.height - H * scale) / 2;
+}
+function toLogical(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left - ox) / scale, y: (e.clientY - r.top - oy) / scale };
+}
+function stopAt(p) {
+  let best = null, bd = 26;
+  for (const s of stops) { const d = dist(p, s); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
+const locked = () => !started || over || rewardOpts;
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (locked()) return;
+  const p = toLogical(e), s = stopAt(p);
+  if (!s) return;
+  if (hubMode) {
+    if (s.hub) return flash('이미 환승 센터입니다');
+    s.hub = true; hubs--; hubMode = false;
+    rebuildD(); renderTools();
+    return;
+  }
+  const l = sel, n = l.stops.length;
+  if (n === 0) { l.stops = [s]; }
+  else if (isLoop(l)) return flash('순환 노선입니다. 고치려면 한 칸 취소를 누르세요');
+  else if (l.stops[0] === s) { dumpLoads(l); l.stops.reverse(); resetVehicles(l); rebuildD(); }
+  else if (l.stops[n - 1] !== s) return flash('노선의 끝 정류장에서 끌어 연장하세요');
+  drawing = true; pointer = p;
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => {
+  if (!drawing) return;
+  pointer = toLogical(e);
+  const s = stopAt(pointer);
+  if (s) append(sel, s);
+});
+const endDraw = () => {
+  if (!drawing) return;
+  drawing = false; pointer = null;
+  if (sel.stops.length < 2) { sel.stops = []; resetVehicles(sel); rebuildD(); }
+  renderTools();
+};
+cv.addEventListener('pointerup', endDraw);
+cv.addEventListener('pointercancel', endDraw);
+
+// ---------- 그리기 ----------
+function lineOffset(l) {
+  const k = lines.indexOf(l) - 3;
+  return { x: k * 2.5, y: k * 2.5 };
+}
+
+function draw(t) {
+  const c = ctx, s = scale * dpr;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.fillStyle = '#22262d'; c.fillRect(0, 0, cv.width, cv.height);
+  c.setTransform(s, 0, 0, s, ox * dpr, oy * dpr);
+  c.fillStyle = '#ece8df'; c.fillRect(0, 0, W, H);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+
+  for (const d of districts) {
+    c.globalAlpha = 0.28; c.fillStyle = d.color;
+    c.beginPath(); c.arc(d.x, d.y, d.r, 0, Math.PI * 2); c.fill();
+    c.globalAlpha = 0.75; c.font = 'bold 13px sans-serif';
+    c.fillText(TYPE_NAME[d.type], d.x, Math.min(H - 10, d.y + d.r - 12));
+    c.globalAlpha = 1;
+  }
+
+  // 강
+  c.strokeStyle = '#8fc3ea'; c.lineWidth = 16; c.lineJoin = 'round';
+  c.beginPath(); river.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); c.stroke();
+
+  // 노선
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  for (const l of lines) {
+    if (l.stops.length < 1) continue;
+    const o = lineOffset(l), pts = l.stops.map(p => ({ x: p.x + o.x, y: p.y + o.y }));
+    if (drawing && l === sel && pointer) pts.push(pointer);
+    const path = () => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); };
+    if (l === sel) { path(); c.strokeStyle = 'rgba(255,200,0,0.55)'; c.lineWidth = MODES[l.mode].w + 8; c.stroke(); }
+    path(); c.strokeStyle = l.color; c.lineWidth = MODES[l.mode].w; c.stroke();
+    if (l.mode === 'sub') { path(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.setLineDash([6, 6]); c.stroke(); c.setLineDash([]); }
+  }
+
+  // 곧 생길 정류장 예고
+  if (pendingStop) {
+    c.strokeStyle = pendingStop.d.color; c.lineWidth = 2; c.setLineDash([4, 4]);
+    c.beginPath(); c.arc(pendingStop.x, pendingStop.y, 11, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#333'; c.font = 'bold 10px sans-serif';
+    c.fillText(Math.ceil(Math.max(0, stopTimer)) + '초', pendingStop.x, pendingStop.y);
+  }
+
+  // 정류장과 기다리는 승객
+  for (const st of stops) {
+    const d = districts[st.d];
+    if (st.hub) {
+      c.fillStyle = '#fff'; c.strokeStyle = '#222'; c.lineWidth = 2;
+      c.beginPath(); c.arc(st.x, st.y, 15, 0, Math.PI * 2); c.fill(); c.stroke();
+    }
+    if (st.over > 0) {
+      const blink = st.over > 0.6 && Math.floor(t * 4) % 2 === 0;
+      c.strokeStyle = blink ? '#000' : '#e02020'; c.lineWidth = 5;
+      c.beginPath(); c.arc(st.x, st.y, st.hub ? 21 : 17, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, st.over)); c.stroke();
+    }
+    c.fillStyle = '#fff'; c.strokeStyle = d.color; c.lineWidth = 4;
+    c.beginPath(); c.arc(st.x, st.y, 10, 0, Math.PI * 2); c.fill(); c.stroke();
+    st.wait.forEach((p, i) => {
+      if (i >= 16) return;
+      c.fillStyle = districts[p.dest].color;
+      c.beginPath(); c.arc(st.x + 17 + (i % 4) * 8, st.y - 8 + Math.floor(i / 4) * 8, 3.3, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 0.8; c.stroke();
+    });
+    if (st.wait.length > capOf(st)) {
+      c.fillStyle = '#c01818'; c.font = 'bold 11px sans-serif';
+      c.fillText(st.wait.length + '명', st.x, st.y - 19);
+    }
+  }
+
+  // 차량
+  for (const l of lines) {
+    const o = lineOffset(l), m = MODES[l.mode], bw = l.mode === 'sub' ? 30 : 22, bh = l.mode === 'sub' ? 15 : 13;
+    for (const v of l.vehicles) {
+      const a = l.stops[v.i], b = l.stops[v.j == null ? v.i : v.j];
+      if (!a || !b) continue;
+      const x = a.x + (b.x - a.x) * v.t + o.x, y = a.y + (b.y - a.y) * v.t + o.y;
+      c.save(); c.translate(x, y);
+      if (a !== b) { let ang = Math.atan2(b.y - a.y, b.x - a.x); if (Math.abs(ang) > Math.PI / 2) ang += Math.PI; c.rotate(ang); }
+      c.fillStyle = l.color; c.strokeStyle = '#fff'; c.lineWidth = 1.5;
+      c.fillRect(-bw / 2, -bh / 2, bw, bh); c.strokeRect(-bw / 2, -bh / 2, bw, bh);
+      c.fillStyle = v.load.length >= m.cap ? '#ffd166' : '#fff'; c.font = 'bold 11px sans-serif';
+      c.fillText(v.load.length + '/' + m.cap, 0, 0.5);
+      c.restore();
+    }
+  }
+
+  for (const p of pops) {
+    c.globalAlpha = 1 - p.t / 0.6; c.fillStyle = '#1a8f3a'; c.font = 'bold 13px sans-serif';
+    c.fillText('+1', p.x, p.y - 16 - p.t * 30); c.globalAlpha = 1;
+  }
+
+  if (msg && performance.now() < msgUntil) {
+    c.font = 'bold 15px sans-serif';
+    const tw = c.measureText(msg).width + 22;
+    c.fillStyle = 'rgba(30,30,30,0.9)'; c.fillRect(W / 2 - tw / 2, H - 42, tw, 28);
+    c.fillStyle = '#fff'; c.fillText(msg, W / 2, H - 28);
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000) * speed;
+  last = now;
+  if (started && !over && !rewardOpts && dt > 0) step(dt);
+  draw(now / 1000);
+  $('day').textContent = day;
+  // 다음 시간대를 10초 전부터 예고
+  const f = clock / DAY, cut = f < 0.35 ? 0.35 : f < 0.65 ? 0.65 : 1, left = (cut - f) * DAY;
+  const nextName = cut === 0.35 ? PHASE_NAME.mid : cut === 0.65 ? PHASE_NAME.pm : '하루 끝';
+  $('phase').textContent = PHASE_NAME[phase()] + (left <= 10 ? ' → ' + nextName + ' ' + Math.ceil(left) + '초' : '');
+  $('dayFill').style.width = (clock / DAY * 100) + '%';
+  $('delivered').textContent = delivered;
+  $('track').textContent = Math.max(0, Math.floor(track - trackUsed()));
+  $('spare').textContent = '버스 ' + spare.bus + ' · 열차 ' + spare.sub;
+  $('bridge').textContent = (bridges - bridgesUsed()) + '/' + bridges;
+  requestAnimationFrame(frame);
+}
+
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
+  speed = +b.dataset.speed;
+  document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
+});
+$('startBtn').onclick = () => { $('start').classList.add('hide'); started = true; };
+$('againBtn').onclick = newGame;
+$('r0').onclick = () => takeReward(0);
+$('r1').onclick = () => takeReward(1);
+$('r2').onclick = () => takeReward(2);
+addEventListener('resize', resize);
+
+newGame();
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
