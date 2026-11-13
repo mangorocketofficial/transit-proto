@@ -47,8 +47,8 @@ button.line { --c: #888; display: flex; align-items: center; gap: 5px; width: ca
   border-radius: 8px; position: relative; font-size: 12px; font-weight: 700; min-height: 32px; text-align: left; white-space: nowrap; }
 button.line::before { content: ''; position: absolute; left: 2px; top: 4px; bottom: 4px; width: 4px; border-radius: 2px; background: var(--c); }
 button.line svg { color: var(--c); }
-button.line small { margin-left: auto; font-size: 10.5px; font-weight: 800; color: var(--ink); }
-button.line .ln { display: flex; flex-direction: column; line-height: 1.12; min-width: 0; }
+button.line small { position: absolute; right: 6px; top: 4px; font-size: 10.5px; font-weight: 800; color: var(--ink); }
+button.line .ln { display: flex; flex-direction: column; line-height: 1.12; min-width: 0; flex: 1; }
 button.line .ln b { font-size: 12px; } button.line .ln em { font-style: normal; font-size: 9.5px; font-weight: 600; color: var(--mute); }
 button.line.dim { opacity: 0.45; }
 button.line.on { background: #fff; box-shadow: 0 0 0 2px var(--c), 0 2px 5px rgba(0,0,0,0.12); }
@@ -98,6 +98,7 @@ canvas { display: block; touch-action: none; }
 .citycard.on { border-color: var(--accent); background: #eef8f1; }
 .citycard.locked { background: var(--paper2); opacity: 0.7; } .citycard.locked i { color: var(--mute); font-size: 10px; letter-spacing: 0; }
 .cityinfo { font-size: 12.5px; line-height: 1.45; background: var(--paper2); border-radius: 10px; padding: 7px 10px; margin: 2px 0 6px; }
+.howcap { font-size: 11px; font-weight: 800; color: var(--accent-d); margin-top: 6px; }
 details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-weight: 700; }
 .stats { display: flex; gap: 8px; margin: 10px 0; }
 .stats div { flex: 1; background: var(--paper2); border-radius: 10px; padding: 8px; text-align: center; font-size: 11px; color: var(--mute); }
@@ -150,20 +151,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       <div class="sub">도시를 골라 교통국장으로 부임하세요. 8일을 버티면 완주이고 다음 도시가 열립니다.</div>
       <div id="cityList" class="cities"></div>
       <div id="cityInfo" class="cityinfo"></div>
-      <details><summary>게임 방법</summary>
-      <ul>
-        <li>승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.</li>
-        <li>왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 끝 정류장에서 다시 끌면 연장됩니다.</li>
-        <li><b>버스</b>는 느리고 6명만 타지만 어디든 깔 수 있습니다. <b>지하철</b>은 빠르고 16명이 타지만 남은 <b>선로 길이</b>만큼만 깔 수 있고, 설 때마다 오래 걸립니다.</li>
-        <li><b>강</b>: 버스 노선은 건널 때마다 다리 1개를 씁니다. 지하철은 터널로 건너지만 선로가 120 더 듭니다.</li>
-        <li><b>환승</b>에는 2초가 걸리고, 승객은 배차 간격(노선 옆의 초)까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.</li>
-        <li><b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다.</li>
-        <li>아침에는 주거 → 업무, 저녁에는 업무·상업 → 주거로 몰립니다. 새 정류장 자리는 미리 점선으로 보입니다.</li>
-        <li><b>시민 만족도</b>: 승객이 빨리, 덜 갈아타고 도착할수록 올라갑니다. 하루 평균이 높으면 지원 선택지가 늘고(80% 이상 4개, 55% 미만 2개), 이틀 연속 40% 미만이면 해임됩니다.</li>
-        <li>하루가 끝나면 시의회 지원 중 하나를 고릅니다. 8일을 넘기면 완주입니다.</li>
-        <li>정류장에 8명 넘게 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.</li>
-      </ul>
-      </details>
+      <details><summary>게임 방법</summary><div id="howto"></div></details>
       <div class="btnrow">
         <button id="contBtn" class="btn blue" style="display:none"></button>
         <button id="startBtn" class="btn">부임하기</button>
@@ -188,8 +176,8 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=11"></script>
-<script src="render.js?v=11"></script>
+<script src="audio.js?v=12"></script>
+<script src="render.js?v=12"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -884,6 +872,60 @@ function applyCityUI() {
   bgDirty = true;
 }
 // 시작 화면의 도시 목록
+// 게임 방법: 모든 도시에 공통인 규칙과 그 도시만의 규칙
+const HOWTO_COMMON = [
+  '승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.',
+  '왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 끝 정류장에서 다시 끌면 연장되고, 첫 정류장으로 돌아오면 순환 노선이 됩니다.',
+  '<b>버스</b>는 느리고 6명만 타지만 어디든 깔 수 있습니다. <b>지하철</b>은 빠르고 16명이 타지만 남은 <b>선로 길이</b>만큼만 깔 수 있고, 설 때마다 오래 걸립니다.',
+  '<b>환승</b>에는 2초가 걸리고, 승객은 배차 간격까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.',
+  '<b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다. 다시 누르면 해제됩니다.',
+  '아침에는 주거 → 업무, 저녁에는 업무·상업 → 주거로 몰립니다. 새 정류장 자리는 미리 점선으로 보입니다.',
+  '<b>시민 만족도</b>: 승객이 빨리, 덜 갈아타고 도착할수록 올라갑니다. 하루 평균이 높으면 지원 선택지가 늘고(80% 이상 4개, 55% 미만 2개), 이틀 연속 40% 미만이면 해임됩니다.',
+  '하루가 끝나면 시의회 지원 중 하나를 고릅니다. 8일을 넘기면 완주입니다.',
+  '정류장에 정원보다 많이 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.',
+];
+const HOWTO_CITY = {
+  river: [
+    '<b>강</b>: 버스 노선은 강을 건널 때마다 다리 1개를 씁니다(처음 2개). 지하철은 터널로 건너지만 선로가 120 더 듭니다.',
+    '어디서 건널지가 첫 고민입니다. 다리를 한곳에 몰아 쓰면 그 노선이 붐빕니다.',
+  ],
+  harbor: [
+    '<b>넓은 만</b>: 버스는 만을 건널 수 없습니다. 지하철 해저 터널은 선로가 300 더 듭니다.',
+    '<b>선착장</b>(닻 표시): 만 양쪽에 3곳씩 있습니다. 승객이 생기지 않는 환승 지점이며 30명까지 기다릴 수 있습니다.',
+    '<b>여객선</b>: 선착장끼리만 잇습니다. 느리고 오래 서지만 한 번에 30명을 태웁니다. 버스로 선착장까지 모아 주세요.',
+    '물을 건너는 여정은 만족도 기준이 14초 너그럽습니다.',
+  ],
+  mountain: [
+    '<b>산</b>: 가운데 산을 버스는 넘지 못합니다. 산을 돌아가도록 노선을 짜세요.',
+    '<b>산악 터널</b>: 지하철은 산을 뚫고 지나갈 수 있지만 선로가 180 더 듭니다.',
+    '<b>케이블카</b>: 산을 넘어 정류장 두 곳을 곧장 잇습니다. 8명만 탑니다.',
+    '산을 넘는 여정은 만족도 기준이 8초 너그럽습니다.',
+  ],
+  festival: [
+    '<b>경기장</b>(분홍 구역): 낮에는 관객이 경기장으로 모입니다. 위쪽에 행사 종료까지 남은 시간이 나옵니다.',
+    '<b>행사 종료</b>: 관객 30명(날마다 6명씩 증가)이 몇 초에 걸쳐 쏟아져 주거 구역으로 돌아갑니다. 경기장 정류장은 40명까지 버팁니다.',
+    '<b>임시 증편</b>: 하루 한 번, 고른 노선의 차량을 25초 동안 두 배로 늘립니다. 조작판 맨 아래 버튼입니다.',
+    '이 도시는 업무 구역이 하나뿐입니다.',
+  ],
+  newtown: [
+    '<b>예정지</b>: 처음에는 주거·업무·상업 구역이 하나씩만 있고, 나머지는 점선 예정지입니다.',
+    '<b>착공</b>: 하루가 끝나 지원을 고르면 예정지 둘이 깜빡입니다. 하나를 눌러 개발하면 다음 날이 시작됩니다.',
+    '내일 생길 구역을 내다보고 노선을 미리 깔아 두세요.',
+    '강이 있어 다리 2개로 시작합니다.',
+  ],
+  metro: [
+    '<b>먼 두 도심</b>: 왼쪽과 오른쪽 도심이 멀리 떨어져 있습니다.',
+    '<b>시내버스 길이 제한</b>: 버스 노선은 길이 430을 넘을 수 없어 두 도심을 버스로 잇기 어렵습니다.',
+    '<b>급행 열차</b>: 선로 없이 매우 빠르고 24명이 타지만 환승 센터에만 섭니다. 환승 센터 둘로 시작합니다.',
+    '어느 정류장을 환승 센터로 삼을지가 첫 고민입니다.',
+  ],
+};
+function renderHowto() {
+  const li = s => '<li>' + s + '</li>';
+  $('howto').innerHTML = '<div class="howcap">' + city.name + '만의 규칙</div><ul>' + (HOWTO_CITY[city.id] || []).map(li).join('') + '</ul>'
+    + '<div class="howcap">공통 규칙</div><ul>' + HOWTO_COMMON.map(li).join('') + '</ul>';
+}
+
 function renderCities() {
   const box = $('cityList'), prog = readProg();
   box.innerHTML = '';
@@ -900,7 +942,8 @@ function renderCities() {
     };
     box.appendChild(b);
   }
-  $('cityInfo').innerHTML = '<b>' + cityName + '</b> · ' + city.desc;
+  $('cityInfo').innerHTML = '<b>' + city.name + ' · ' + cityName + '</b><br>' + city.desc;
+  renderHowto();
 }
 function flashCity(text) { $('cityInfo').textContent = text; }
 
@@ -1012,7 +1055,7 @@ function renderTools() {
     const share = rideSum ? Math.round((l.rides || 0) / rideSum * 100) + '%' : '–';
     b.innerHTML = icon(MODE_ICON[l.mode], 16)
       + '<span class="ln"><b>' + (MODES[l.mode].short || MODES[l.mode].name) + ' ' + l.n + '</b>'
-      + '<em>' + (cnt ? cnt + '대 · ' + Math.round(hw) + '초' : '미개통') + '</em></span>'
+      + '<em>' + (cnt ? (l.stops.length - (isLoop(l) ? 1 : 0)) + '/' + maxStopsOf(l.mode) + '곳 · ' + cnt + '대 · ' + Math.round(hw) + '초' : '미개통') + '</em></span>'
       + '<small title="운송 분담률">' + share + '</small>';
     b.title = '운행 대수 · 배차 간격 · 운송 분담률';
     b.onclick = () => { sel = l; hubMode = false; sfxClick(); renderTools(); };
@@ -1023,7 +1066,8 @@ function renderTools() {
   const acts = document.createElement('div');
   acts.className = 'card acts';
   const count = sel.stops.length > 1 ? vehCount(sel) : 0;
-  acts.innerHTML = '<div class="cap">' + MODES[sel.mode].name + ' ' + sel.n + ' · ' + count + '대 · 정원 ' + modeCap(sel.mode) + '</div>';
+  const nStops = sel.stops.length - (isLoop(sel) ? 1 : 0);
+  acts.innerHTML = '<div class="cap">' + MODES[sel.mode].name + ' ' + sel.n + ' · ' + nStops + '/' + maxStopsOf(sel.mode) + '곳 · ' + count + '대</div>';
   const grid = document.createElement('div');
   grid.className = 'grid';
   const act = (ic, text, fn, cls) => {
@@ -1151,7 +1195,7 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
   speed = +b.dataset.speed;
   document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
 });
-$('startBtn').onclick = () => { clearSave(); $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); };
+$('startBtn').onclick = () => { clearSave(); $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); flash(city.name + ' · ' + city.tag); };
 $('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
 $('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
 // 홈: 지금 판을 저장해 두고 도시 선택 화면으로 돌아간다
