@@ -46,6 +46,7 @@ canvas { display: block; touch-action: none; }
   <span>다리 <b id="bridge">0</b></span>
   <span>여유 <b id="spare">0</b></span>
   <span class="sp"></span>
+  <button id="saveBtn">저장</button>
   <button id="muteBtn">소리 켬</button>
   <button data-speed="0">멈춤</button>
   <button data-speed="1" class="on">1배</button>
@@ -57,6 +58,7 @@ canvas { display: block; touch-action: none; }
     <canvas id="cv"></canvas>
     <div id="start" class="overlay"><div class="panel">
       <h2>노선 짜기</h2>
+      <button id="contBtn" style="display:none;position:static;background:#2b6cb0;margin:0 0 8px"></button>
       정류장에 승객이 넘치지 않게 버스와 지하철 노선을 짜세요.
       <ul>
         <li>승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.</li>
@@ -69,7 +71,7 @@ canvas { display: block; touch-action: none; }
         <li>하루가 끝나면 보상 셋 중 하나를 고릅니다. 8일을 넘기면 완주입니다.</li>
         <li>정류장에 8명 넘게 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.</li>
       </ul>
-      <button id="startBtn">시작</button>
+      <button id="startBtn">새 게임 시작</button>
     </div></div>
     <div id="reward" class="overlay hide"><div class="panel">
       <h2 id="rTitle"></h2>
@@ -85,8 +87,8 @@ canvas { display: block; touch-action: none; }
     </div></div>
   </div>
 </div>
-<script src="audio.js"></script>
-<script src="render.js"></script>
+<script src="audio.js?v=4"></script>
+<script src="render.js?v=4"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -446,7 +448,7 @@ function offerReward() {
 function takeReward(i) {
   rewardOpts[i].run();
   rewardOpts = null; day++;
-  sfxReward();
+  sfxReward(); saveGame();
   for (const col of ['#ffd166', '#ef476f', '#06d6a0', '#3a86ff']) fxBurst(W / 2 + Math.random() * 200 - 100, H / 2, col, 14, 160);
   $('reward').classList.add('hide');
   renderTools();
@@ -455,6 +457,50 @@ function takeReward(i) {
 // ---------- 시작과 끝 ----------
 function loadBest() { try { return +localStorage.getItem(BEST_KEY) || 0; } catch (e) { return 0; } }
 function saveBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {} }
+
+// ---------- 저장과 이어하기 ----------
+const SAVE_KEY = 'transit-proto-save';
+function saveGame(manual) {
+  if (!started || over) return;
+  const data = {
+    v: 1, districts, river, track, spare, bridges, hubs, day, clock, delivered, stopTimer, cleared, now,
+    pendingStop: pendingStop ? { x: pendingStop.x, y: pendingStop.y, d: pendingStop.d.id } : null,
+    stops: stops.map(s => ({ x: s.x, y: s.y, d: s.d, hub: s.hub, over: s.over, acc: s.acc, wait: s.wait.map(p => [p.dest, p.ready || 0]) })),
+    lines: lines.map(l => ({ unlocked: l.unlocked, extra: l.extra, stops: l.stops.map(s => s.idx),
+      vehicles: l.vehicles.map(v => ({ i: v.i, j: v.j, t: v.t, dir: v.dir, dwell: v.dwell, load: v.load.map(p => p.dest) })) })),
+    sel: lines.indexOf(sel), reward: !!rewardOpts,
+  };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); if (manual) flash('저장했습니다'); }
+  catch (e) { if (manual) flash('저장하지 못했습니다'); }
+}
+function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 1 ? d : null; } catch (e) { return null; } }
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+function loadGame() {
+  const data = readSave();
+  if (!data) return false;
+  try {
+    districts = data.districts; river = data.river;
+    track = data.track; spare = data.spare; bridges = data.bridges; hubs = data.hubs; day = data.day; clock = data.clock;
+    delivered = data.delivered; stopTimer = data.stopTimer; cleared = data.cleared; now = data.now;
+    stops = data.stops.map((s, i) => ({ idx: i, x: s.x, y: s.y, d: s.d, hub: s.hub, over: s.over, acc: s.acc, born: 0,
+      wait: s.wait.map(([dest, ready]) => ({ dest, ready })) }));
+    makeLines();
+    lines.forEach((l, i) => {
+      const d = data.lines[i];
+      l.unlocked = d.unlocked; l.extra = d.extra; l.stops = d.stops.map(k => stops[k]);
+      l.vehicles = d.vehicles.map(v => ({ i: v.i, j: v.j, t: v.t, dir: v.dir, dwell: v.dwell, load: v.load.map(dest => ({ dest })) }));
+    });
+    pendingStop = data.pendingStop ? { x: data.pendingStop.x, y: data.pendingStop.y, d: districts[data.pendingStop.d] } : null;
+    over = false; hubMode = false; drawing = false; rewardOpts = null; lastPhase = phase(); bgDirty = true;
+    rebuildD();
+    sel = lines[data.sel] || lines[0];
+    $('over').classList.add('hide'); $('reward').classList.add('hide');
+    renderTools();
+    if (data.reward) offerReward();    // 보상을 고르던 중에 저장된 경우
+    return true;
+  } catch (e) { console.error(e); newGame(); return false; }
+}
 
 function newGame() {
   genMap(); stops = []; makeLines();
@@ -471,7 +517,7 @@ function newGame() {
 }
 
 function gameOver() {
-  FX.shake = 1; FX.flash = 1; sfxOver();
+  FX.shake = 1; FX.flash = 1; sfxOver(); clearSave();
   const prev = loadBest(), isBest = delivered > prev;
   if (isBest) saveBest(delivered);
   $('oDay').textContent = day;
@@ -594,16 +640,26 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
   speed = +b.dataset.speed;
   document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
 });
-$('startBtn').onclick = () => { $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); };
+$('startBtn').onclick = () => { clearSave(); $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); };
+$('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
+$('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
+// 자동 저장: 5초마다, 그리고 화면을 떠날 때
+setInterval(() => { if (!rewardOpts) saveGame(); }, 5000);
+addEventListener('pagehide', () => saveGame());
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 $('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').textContent = AU.muted ? '소리 끔' : '소리 켬'; };
 addEventListener('pointerdown', audioInit, { passive: true });
-$('againBtn').onclick = newGame;
+$('againBtn').onclick = () => { clearSave(); newGame(); };
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
 $('r2').onclick = () => takeReward(2);
 addEventListener('resize', resize);
 
 newGame();
+{ // 저장된 판이 있으면 이어하기 버튼을 보여 준다
+  const sv = readSave();
+  if (sv) { $('contBtn').style.display = ''; $('contBtn').textContent = '이어하기 (' + sv.day + '일차 · 수송 ' + sv.delivered + '명)'; }
+}
 resize();
 requestAnimationFrame(frame);
 </script>

@@ -88,7 +88,7 @@ function buildBg() {
     g.strokeStyle = hexA(d.color, 0.55); g.lineWidth = 2.5;
     g.beginPath(); g.arc(d.x, d.y, d.r, 0, Math.PI * 2); g.stroke();
     // 건물: 길 사이 칸마다 하나씩
-    const tinted = [0, 1, 2, 3].map(i => SPR[kinds[d.type] + i].ok ? tintSprite(SPR[kinds[d.type] + i], lighten(d.color, 0.52)) : null);
+    const tinted = [0, 1, 2, 3].map(i => SPR[kinds[d.type] + i].ok ? tintSprite(SPR[kinds[d.type] + i], lighten(d.color, 0.6)) : null);
     for (let x = d.x - d.r - cell + offX + cell / 2; x < d.x + d.r; x += cell) {
       for (let y = d.y - d.r - cell + offY + cell / 2; y < d.y + d.r; y += cell) {
         if (Math.hypot(x - d.x, y - d.y) > d.r - 11) continue;
@@ -97,7 +97,7 @@ function buildBg() {
         const treeChance = d.type === 'R' ? 0.24 : d.type === 'C' ? 0.14 : 0.06;
         if (roll < 0.10 + treeChance) items.push({ img: SPR['tree' + (Math.random() < 0.5 ? 0 : 1)], x, y, size: 2.4 * UNIT });
         else {
-          items.push({ img: tinted[Math.floor(Math.random() * 4)], x, y, size: 6 * UNIT });
+          items.push({ img: tinted[Math.floor(Math.random() * 4)], x, y, size: 6 * UNIT, building: true });
           if (Math.random() < 0.7) cityLights.push({ x: x + Math.random() * 6 - 3, y: y + Math.random() * 6 - 3 });
         }
       }
@@ -111,7 +111,12 @@ function buildBg() {
     items.push({ img: SPR['tree' + (i % 2)], x: p.x, y: p.y, size: 2.4 * UNIT * (0.8 + Math.random() * 0.5) });
   }
   items.sort((a, b) => a.y - b.y);
-  for (const it of items) if (it.img && (it.img.ok || it.img.getContext)) g.drawImage(it.img, it.x - it.size / 2, it.y - it.size / 2, it.size, it.size);
+  for (const it of items) {
+    if (!it.img || !(it.img.ok || it.img.getContext)) continue;
+    g.globalAlpha = it.building ? 0.62 : 0.85;     // 건물은 배경으로 물러나게: 승객과 노선이 먼저 보여야 한다
+    g.drawImage(it.img, it.x - it.size / 2, it.y - it.size / 2, it.size, it.size);
+  }
+  g.globalAlpha = 1;
 
   // 구역 이름표
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 12px sans-serif';
@@ -296,14 +301,22 @@ function draw(t) {
       c.strokeStyle = blink ? '#fff' : '#e02020'; c.lineWidth = 5;
       c.beginPath(); c.arc(x, y, st.hub ? 21 : 17, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, st.over)); c.stroke();
     }
-    const ox2 = st.hub ? 22 : 18;
-    st.wait.forEach((p, i) => {
-      if (i >= 20) return;
-      const px = x + ox2 + (i % 5) * 7.5, py = y - 8 + Math.floor(i / 5) * 7.5;
-      c.fillStyle = districts[p.dest].color;
-      c.beginPath(); c.arc(px, py, 3.2, 0, Math.PI * 2); c.fill();
-      c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1; c.stroke();
-    });
+    const ox2 = st.hub ? 24 : 20, shown = Math.min(st.wait.length, 20);
+    if (shown) {
+      // 흰 판 위에 올려서 건물 위에서도 또렷하게
+      const cols = Math.min(shown, 5), rows = Math.ceil(shown / 5), more = st.wait.length > 20;
+      const pw = cols * 8.5 + 6 + (more ? 16 : 0), ph = rows * 8.5 + 6;
+      c.fillStyle = 'rgba(0,0,0,0.25)'; roundRect(c, x + ox2 - 6.5, y - 11.5, pw, ph, 5); c.fill();
+      c.fillStyle = '#fff'; roundRect(c, x + ox2 - 8, y - 13.5, pw, ph, 5); c.fill();
+      c.strokeStyle = st.wait.length > cap ? '#e02020' : 'rgba(40,46,58,0.55)'; c.lineWidth = 1.2; c.stroke();
+      for (let i = 0; i < shown; i++) {
+        const px = x + ox2 - 0.5 + (i % 5) * 8.5, py = y - 6 + Math.floor(i / 5) * 8.5;
+        c.fillStyle = districts[st.wait[i].dest].color;
+        c.beginPath(); c.arc(px, py, 3.5, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = 'rgba(20,24,30,0.75)'; c.lineWidth = 0.9; c.stroke();
+      }
+      if (more) { c.fillStyle = '#c01818'; c.font = 'bold 9px sans-serif'; c.fillText('+' + (st.wait.length - 20), x + ox2 + cols * 8.5 + 4, y - 13.5 + ph / 2); }
+    }
     if (st.wait.length > cap) {
       c.font = 'bold 11px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#fff'; c.fillStyle = '#c01818';
       c.strokeText(st.wait.length + '명', x, y - (st.hub ? 24 : 20)); c.fillText(st.wait.length + '명', x, y - (st.hub ? 24 : 20));
@@ -338,8 +351,11 @@ function draw(t) {
       c.restore();
       // 탑승 인원(항상 똑바로)
       const full = v.load.length >= m.cap;
-      c.font = 'bold 10px sans-serif'; c.lineWidth = 3; c.strokeStyle = 'rgba(20,24,30,0.85)'; c.fillStyle = full ? '#ffd166' : '#fff';
-      c.strokeText(v.load.length, x, y + 0.5); c.fillText(v.load.length, x, y + 0.5);
+      const label = v.load.length + '/' + m.cap;
+      c.font = 'bold 10px sans-serif';
+      const lw = c.measureText(label).width + 8, ly = y - 15;
+      c.fillStyle = full ? '#d63030' : 'rgba(24,28,36,0.9)'; roundRect(c, x - lw / 2, ly - 7, lw, 14, 7); c.fill();
+      c.fillStyle = '#fff'; c.fillText(label, x, ly + 0.5);
     }
   }
 
