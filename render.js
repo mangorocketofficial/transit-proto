@@ -253,6 +253,7 @@ function draw(t) {
   // 노선
   for (const l of lines) {
     if (l.stops.length < 1) continue;
+    c.globalAlpha = focusOn && l !== sel ? 0.13 : 1;     // 한 노선만 보기: 나머지는 흐리게
     const o = lineOffset(l), m = MODES[l.mode], pts = l.stops.map(p => ({ x: p.x + o.x, y: p.y + o.y }));
     const live = drawing && l === sel && pointer;
     const path = extra => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); if (extra) c.lineTo(pointer.x, pointer.y); };
@@ -279,6 +280,7 @@ function draw(t) {
       }
     }
   }
+  c.globalAlpha = 1;
 
   // 구역별 만족도: 이름표 옆에 색 알약으로
   c.font = 'bold 10px sans-serif';
@@ -397,7 +399,9 @@ function draw(t) {
   for (const l of lines) {
     const o = lineOffset(l), m = MODES[l.mode], isSub = l.mode === 'sub', isFerry = l.mode === 'ferry', isExp = l.mode === 'exp', isCable = l.mode === 'cable';
     const spr = isCable ? null : vehicleSprite(isSub || isExp ? 'train' : isFerry ? 'ferry' : 'bus', l.color);
+    const dim = focusOn && l !== sel, cap = modeCap(l.mode);
     for (const v of l.vehicles) {
+      c.globalAlpha = dim ? 0.15 : 1;
       const a = l.stops[v.i], b = l.stops[v.j == null ? v.i : v.j];
       if (!a || !b) continue;
       const te = v.t * v.t * (3 - 2 * v.t);     // 출발과 도착을 부드럽게
@@ -425,14 +429,15 @@ function draw(t) {
       c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.4; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.stroke();
       c.restore();
       // 탑승 인원(항상 똑바로)
-      const full = v.load.length >= m.cap;
-      const label = v.load.length + '/' + m.cap;
+      const full = v.load.length >= cap;
+      const label = v.load.length + '/' + cap;
       c.font = 'bold 10px sans-serif';
       const lw = c.measureText(label).width + 8, ly = y - 15;
       c.fillStyle = full ? '#d63030' : 'rgba(24,28,36,0.9)'; roundRect(c, x - lw / 2, ly - 7, lw, 14, 7); c.fill();
       c.fillStyle = '#fff'; c.fillText(label, x, ly + 0.5);
     }
   }
+  c.globalAlpha = 1;
 
   // 효과
   for (const r of FX.rings) {
