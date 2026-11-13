@@ -73,10 +73,21 @@ function buildBg() {
   riverPath(); g.strokeStyle = '#74b3e3'; g.lineWidth = half * 2; g.stroke();
   riverPath(); g.strokeStyle = '#93c8ef'; g.lineWidth = half * 0.9; g.stroke();
 
+  // 산: 등고선처럼 겹친 타원과 눈 덮인 봉우리
+  if (mountain) {
+    const m = mountain, layers = [[1, '#b9b08a'], [0.82, '#a59a72'], [0.62, '#93875f'], [0.42, '#857a58'], [0.22, '#e9eef0']];
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.ellipse(m.x + 7, m.y + 9, m.rx, m.ry, 0, 0, Math.PI * 2); g.fill();
+    for (const [k, col] of layers) {
+      g.fillStyle = col; g.beginPath(); g.ellipse(m.x - (1 - k) * 12, m.y - (1 - k) * 10, m.rx * k, m.ry * k, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(70,60,35,0.25)'; g.lineWidth = 1; g.stroke();
+    }
+  }
+
   const items = [];
   cityLights = [];
-  const kinds = { R: 'house', O: 'office', C: 'shop' };
+  const kinds = { R: 'house', O: 'office', C: 'shop', V: 'office' };
   for (const d of districts) {
+    if (d.built === false) continue;      // 신도시의 예정지는 아직 빈 땅
     // 바닥과 길
     g.save();
     g.beginPath(); g.arc(d.x, d.y, d.r, 0, Math.PI * 2); g.clip();
@@ -108,7 +119,8 @@ function buildBg() {
   for (let i = 0; i < 70; i++) {
     const p = { x: Math.random() * W, y: Math.random() * H };
     if (districts.some(d => dist(d, p) < d.r + 12)) continue;
-    if (Math.abs(p.x - river[5].x) < city.half + 18) continue;
+    if (river.length && Math.abs(p.x - river[5].x) < city.half + 18) continue;
+    if (mountain && Math.hypot((p.x - mountain.x) / (mountain.rx + 14), (p.y - mountain.y) / (mountain.ry + 14)) < 1) continue;
     items.push({ img: SPR['tree' + (i % 2)], x: p.x, y: p.y, size: 2.4 * UNIT * (0.8 + Math.random() * 0.5) });
   }
   items.sort((a, b) => a.y - b.y);
@@ -122,7 +134,8 @@ function buildBg() {
   // 구역 이름표
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 12px sans-serif';
   for (const d of districts) {
-    const y = Math.min(H - 12, d.y + d.r - 2), tw = 38;
+    if (d.built === false) continue;
+    const y = Math.min(H - 12, d.y + d.r - 2), tw = d.type === 'V' ? 46 : 38;
     g.fillStyle = 'rgba(255,255,255,0.92)'; roundRect(g, d.x - tw / 2, y - 9, tw, 18, 9); g.fill();
     g.strokeStyle = d.color; g.lineWidth = 1.5; g.stroke();
     g.fillStyle = d.color; g.fillText(TYPE_NAME[d.type], d.x, y + 0.5);
@@ -161,7 +174,7 @@ const PIER_STYLE = { color: '#1f4e79' };   // 선착장은 어느 구역에도 �
 
 // ---------- 그리기 ----------
 function lineOffset(l) {
-  const k = lines.indexOf(l) - 3;
+  const k = (lines.indexOf(l) % 7) - 3;
   return { x: k * 2.5, y: k * 2.5 };
 }
 
@@ -248,6 +261,7 @@ function draw(t) {
     path(); c.strokeStyle = l.color; c.lineWidth = m.w; c.stroke();
     if (l.mode === 'sub') { path(); c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1.5; c.setLineDash([6, 7]); c.stroke(); c.setLineDash([]); }
     if (l.mode === 'ferry') { path(); c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 2; c.setLineDash([1, 7]); c.stroke(); c.setLineDash([]); }
+    if (l.mode === 'exp') { path(); c.strokeStyle = '#fff3c4'; c.lineWidth = 2; c.stroke(); }
     if (live) {
       c.beginPath(); c.moveTo(pts[pts.length - 1].x, pts[pts.length - 1].y); c.lineTo(pointer.x, pointer.y);
       c.strokeStyle = l.color; c.lineWidth = m.w; c.setLineDash([7, 7]); c.lineDashOffset = -t * 30; c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
@@ -275,6 +289,38 @@ function draw(t) {
     roundRect(c, x - 14, y - 8, 30, 16, 8); c.fill();
     c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
     c.fillStyle = '#fff'; c.fillText(v + '%', x + 1, y + 0.5);
+  }
+
+  // 신도시: 예정지는 점선으로, 지금 고를 수 있는 곳은 강조해서
+  for (const d of districts) {
+    if (d.built !== false) continue;
+    const pickable = siteChoice && siteChoice.includes(d.id);
+    c.setLineDash([7, 6]); c.lineDashOffset = pickable ? -t * 14 : 0;
+    c.strokeStyle = hexA(d.color, pickable ? 1 : 0.5); c.lineWidth = pickable ? 4 : 2;
+    c.fillStyle = hexA(d.color, pickable ? 0.22 + 0.08 * Math.sin(t * 5) : 0.06);
+    c.beginPath(); c.arc(d.x, d.y, d.r, 0, Math.PI * 2); c.fill(); c.stroke();
+    c.setLineDash([]); c.lineDashOffset = 0;
+    c.font = 'bold 13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#fff'; c.fillStyle = d.color;
+    const label = TYPE_NAME[d.type] + ' 예정지';
+    c.strokeText(label, d.x, d.y - 8); c.fillText(label, d.x, d.y - 8);
+    if (pickable) { c.font = 'bold 12px sans-serif'; c.strokeText('눌러서 착공', d.x, d.y + 10); c.fillText('눌러서 착공', d.x, d.y + 10); }
+  }
+  if (siteChoice) {
+    c.font = 'bold 14px sans-serif';
+    const text = '다음에 개발할 예정지를 고르세요', tw = c.measureText(text).width + 26;
+    c.fillStyle = 'rgba(24,28,36,0.92)'; roundRect(c, W / 2 - tw / 2, 10, tw, 28, 14); c.fill();
+    c.fillStyle = '#fff'; c.fillText(text, W / 2, 24.5);
+  }
+  // 축제 도시: 행사 중인 경기장 위에 남은 시간을 띄운다
+  if (city.eventEnd && clock < city.eventEnd * DAY) {
+    const d = districts.find(x => x.type === 'V');
+    if (d) {
+      const text = (clock >= city.eventStart * DAY ? '행사 중 · ' : '행사 예정 · ') + Math.ceil(city.eventEnd * DAY - clock) + '초 뒤 종료';
+      c.font = 'bold 11px sans-serif';
+      const tw = c.measureText(text).width + 14, y = Math.max(12, d.y - d.r - 4);
+      c.fillStyle = '#d6336c'; roundRect(c, d.x - tw / 2, y - 9, tw, 18, 9); c.fill();
+      c.fillStyle = '#fff'; c.fillText(text, d.x, y + 0.5);
+    }
   }
 
   // 곧 생길 정류장 예고
@@ -349,15 +395,15 @@ function draw(t) {
 
   // 차량
   for (const l of lines) {
-    const o = lineOffset(l), m = MODES[l.mode], isSub = l.mode === 'sub', isFerry = l.mode === 'ferry';
-    const spr = vehicleSprite(isSub ? 'train' : isFerry ? 'ferry' : 'bus', l.color);
+    const o = lineOffset(l), m = MODES[l.mode], isSub = l.mode === 'sub', isFerry = l.mode === 'ferry', isExp = l.mode === 'exp', isCable = l.mode === 'cable';
+    const spr = isCable ? null : vehicleSprite(isSub || isExp ? 'train' : isFerry ? 'ferry' : 'bus', l.color);
     for (const v of l.vehicles) {
       const a = l.stops[v.i], b = l.stops[v.j == null ? v.i : v.j];
       if (!a || !b) continue;
       const te = v.t * v.t * (3 - 2 * v.t);     // 출발과 도착을 부드럽게
       const x = a.x + (b.x - a.x) * te + o.x, y = a.y + (b.y - a.y) * te + o.y;
       const ang = a !== b ? Math.atan2(b.y - a.y, b.x - a.x) : 0;
-      const len = isSub ? 44 : isFerry ? 34 : 26, wid = isSub ? 13 : isFerry ? 13.5 : 12;
+      const len = isExp ? 68 : isSub ? 44 : isFerry ? 34 : isCable ? 16 : 26, wid = isSub || isExp ? 13 : isFerry ? 13.5 : 12;
       if (isFerry && v.t > 0.02 && v.t < 0.98 && Math.random() < 0.35) {   // 배 뒤로 남는 물거품
         fxBurst(x - Math.cos(ang) * len / 2, y - Math.sin(ang) * len / 2, 'rgba(255,255,255,0.85)', 1, 14);
       }
@@ -369,12 +415,13 @@ function draw(t) {
         c.fillStyle = beam; c.beginPath(); c.moveTo(len / 2, -3); c.lineTo(len / 2 + 26, -10); c.lineTo(len / 2 + 26, 10); c.lineTo(len / 2, 3); c.fill();
       }
       if (spr) {
-        if (isSub) {   // 두 칸
+        if (isExp) { for (const x0 of [-34.5, -12, 10.5]) c.drawImage(spr, x0, -8.5, 24, 17); }   // 세 칸
+        else if (isSub) {   // 두 칸
           c.drawImage(spr, -23.5, -8.5, 24, 17);
           c.drawImage(spr, -0.5, -8.5, 24, 17);
         } else if (isFerry) c.drawImage(spr, -18.9, -9.45, 37.8, 18.9);
         else c.drawImage(spr, -len * 0.6, -len * 0.3, len * 1.2, len * 0.6);
-      } else { c.fillStyle = l.color; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.fill(); }
+      } else { c.fillStyle = isCable ? '#f4f1e6' : l.color; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.fill(); if (isCable) { c.fillStyle = l.color; c.fillRect(-len / 2, -1.5, len, 3); } }
       c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.4; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.stroke();
       c.restore();
       // 탑승 인원(항상 똑바로)
