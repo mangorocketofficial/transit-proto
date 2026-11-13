@@ -128,6 +128,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
   </div>
   <span class="sp"></span>
   <div class="ctl card">
+    <button id="homeBtn" title="도시 선택으로"><span data-ic="home"></span></button>
     <button id="saveBtn" title="저장"><span data-ic="save"></span></button>
     <button id="muteBtn" title="소리"></button>
   </div>
@@ -184,8 +185,8 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=9"></script>
-<script src="render.js?v=9"></script>
+<script src="audio.js?v=10"></script>
+<script src="render.js?v=10"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -821,6 +822,7 @@ const ICON = {
   ferry: '<path d="M3 14l2 6h14l2-6-9-3z"/><path d="M6 12.5V8h12v4.5M10 8V4h4v4"/>',
   cable: '<path d="M2 6l20-3"/><path d="M12 4.5V9"/><rect x="6" y="9" width="12" height="10" rx="2.5"/><path d="M6 14h12"/>',
   bolt: '<path d="M13 2L5 13h6l-1 9 8-12h-6z"/>',
+  home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
 };
 const icon = (name, size) => '<svg class="ic" viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) + '">' + ICON[name] + '</svg>';
 document.querySelectorAll('[data-ic]').forEach(e => { e.outerHTML = icon(e.dataset.ic, 16); });
@@ -1103,6 +1105,16 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
 $('startBtn').onclick = () => { clearSave(); $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); };
 $('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
 $('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
+// 홈: 지금 판을 저장해 두고 도시 선택 화면으로 돌아간다
+$('homeBtn').onclick = () => {
+  sfxClick();
+  if (!started) return;
+  saveGame();
+  started = false; hubMode = false; drawing = false;
+  $('reward').classList.add('hide'); $('over').classList.add('hide');
+  newGame();      // 화면 뒤에는 같은 도시의 새 판을 깔아 둔다. 하던 판은 이어하기로 돌아온다
+  showStart();
+};
 // 자동 저장: 5초마다, 그리고 화면을 떠날 때
 setInterval(() => { if (!rewardOpts) saveGame(); }, 5000);
 addEventListener('pagehide', () => saveGame());
@@ -1110,7 +1122,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 $('muteBtn').innerHTML = icon('sound', 16);
 $('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').innerHTML = icon(AU.muted ? 'mute' : 'sound', 16); };
 addEventListener('pointerdown', audioInit, { passive: true });
-$('againBtn').onclick = () => { clearSave(); started = false; newGame(); renderCities(); $('start').classList.remove('hide'); };
+$('againBtn').onclick = () => { clearSave(); started = false; newGame(); showStart(); };
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
 $('r2').onclick = () => takeReward(2);
@@ -1119,11 +1131,15 @@ addEventListener('resize', resize);
 if (window.ResizeObserver) new ResizeObserver(resize).observe($('wrap'));
 
 newGame();
-{ // 저장된 판이 있으면 이어하기 버튼을 보여 준다
+// 도시 선택 화면을 연다. 저장된 판이 있으면 이어하기 버튼을 보여 준다
+function showStart() {
   renderCities();
   const sv = readSave();
-  if (sv) { $('contBtn').style.display = ''; $('contBtn').textContent = (sv.city || '도시') + ' 이어하기 · ' + sv.day + '일차'; }
+  $('contBtn').style.display = sv ? '' : 'none';
+  if (sv) $('contBtn').textContent = (sv.city || '도시') + ' 이어하기 · ' + sv.day + '일차';
+  $('start').classList.remove('hide');
 }
+showStart();
 resize();
 requestAnimationFrame(frame);
 </script>
