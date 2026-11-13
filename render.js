@@ -259,6 +259,17 @@ function draw(t) {
     }
   }
 
+  // 구역별 만족도: 이름표 옆에 색 알약으로
+  c.font = 'bold 10px sans-serif';
+  for (const d of districts) {
+    if (!stops.some(s => s.d === d.id)) continue;
+    const v = Math.round(d.sat), y = Math.min(H - 12, d.y + d.r - 2), x = d.x + 36;
+    c.fillStyle = v >= 70 ? '#2f8f5b' : v >= 45 ? '#d98a00' : '#d64545';
+    roundRect(c, x - 14, y - 8, 30, 16, 8); c.fill();
+    c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = '#fff'; c.fillText(v + '%', x + 1, y + 0.5);
+  }
+
   // 곧 생길 정류장 예고
   if (pendingStop) {
     const pulse = 11 + Math.sin(t * 6) * 1.5;
