@@ -218,4 +218,15 @@ def train():
     box(0.4, 0.3, 0.08, x=-0.5, z=1.05, color=DARK); box(0.4, 0.3, 0.08, x=0.5, z=1.05, color=DARK)
 train(); render('train', tilt=0, scale=2.4, rx=256, ry=128, shadow=False)
 
+# 여객선: 넓적한 선체 위에 객실과 굴뚝
+def ferry():
+    box(2.7, 1.05, 0.45, z=0.05, bevel=0.3)
+    box(0.5, 0.7, 0.4, x=1.05, z=0.1, bevel=0.2)                 # 뱃머리 쪽을 좁게 보이게
+    box(1.5, 0.74, 0.4, x=-0.15, z=0.5, color=ROOF, bevel=0.06)  # 객실
+    for sy in (-1, 1):
+        box(1.3, 0.04, 0.14, x=-0.15, y=sy * 0.375, z=0.66, color=GLASS)
+    box(0.12, 0.6, 0.14, x=0.6, z=0.66, color=GLASS)
+    box(0.26, 0.26, 0.4, x=-0.55, z=0.9, color=DARK, bevel=0.08)  # 굴뚝
+ferry(); render('ferry', tilt=0, scale=3.0, rx=256, ry=128, shadow=False)
+
 print('SPRITES DONE')

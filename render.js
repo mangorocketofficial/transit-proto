@@ -4,7 +4,7 @@
 // ---------- 스프라이트 (Blender로 렌더링한 PNG) ----------
 const SPR = {};
 const SPR_NAMES = ['house0', 'house1', 'house2', 'house3', 'office0', 'office1', 'office2', 'office3',
-  'shop0', 'shop1', 'shop2', 'shop3', 'tree0', 'tree1', 'bus', 'train'];
+  'shop0', 'shop1', 'shop2', 'shop3', 'tree0', 'tree1', 'bus', 'train', 'ferry'];
 let sprReady = false, bgDirty = true, bgCanvas = null, cityLights = [];
 (function loadSprites() {
   let left = SPR_NAMES.length;
@@ -68,9 +68,10 @@ function buildBg() {
   // 강
   const riverPath = () => { g.beginPath(); river.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); };
   g.lineJoin = 'round'; g.lineCap = 'round';
-  riverPath(); g.strokeStyle = '#cdc6a4'; g.lineWidth = 25; g.stroke();
-  riverPath(); g.strokeStyle = '#74b3e3'; g.lineWidth = 18; g.stroke();
-  riverPath(); g.strokeStyle = '#93c8ef'; g.lineWidth = 8; g.stroke();
+  const half = city.half;        // 물의 반폭: 강은 좁고 만은 넓다
+  riverPath(); g.strokeStyle = '#cdc6a4'; g.lineWidth = half * 2 + 7; g.stroke();
+  riverPath(); g.strokeStyle = '#74b3e3'; g.lineWidth = half * 2; g.stroke();
+  riverPath(); g.strokeStyle = '#93c8ef'; g.lineWidth = half * 0.9; g.stroke();
 
   const items = [];
   cityLights = [];
@@ -107,7 +108,7 @@ function buildBg() {
   for (let i = 0; i < 70; i++) {
     const p = { x: Math.random() * W, y: Math.random() * H };
     if (districts.some(d => dist(d, p) < d.r + 12)) continue;
-    if (Math.abs(p.x - river[5].x) < 26) continue;
+    if (Math.abs(p.x - river[5].x) < city.half + 18) continue;
     items.push({ img: SPR['tree' + (i % 2)], x: p.x, y: p.y, size: 2.4 * UNIT * (0.8 + Math.random() * 0.5) });
   }
   items.sort((a, b) => a.y - b.y);
@@ -156,6 +157,8 @@ function fxUpdate(dt) {
   FX.flash = Math.max(0, FX.flash - dt * 1.2);
 }
 
+const PIER_STYLE = { color: '#1f4e79' };   // 선착장은 어느 구역에도 속하지 않는다
+
 // ---------- 그리기 ----------
 function lineOffset(l) {
   const k = lines.indexOf(l) - 3;
@@ -201,10 +204,12 @@ function draw(t) {
   else { c.fillStyle = '#e4e0cf'; c.fillRect(0, 0, W, H); }
 
   // 강물 반짝임
-  c.strokeStyle = 'rgba(255,255,255,0.45)'; c.lineWidth = 1.6; c.setLineDash([9, 30]); c.lineDashOffset = -t * 16;
-  c.beginPath(); river.forEach((p, i) => i ? c.lineTo(p.x - 3, p.y) : c.moveTo(p.x - 3, p.y)); c.stroke();
-  c.lineDashOffset = -t * 11 + 17;
-  c.beginPath(); river.forEach((p, i) => i ? c.lineTo(p.x + 4, p.y) : c.moveTo(p.x + 4, p.y)); c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.45)'; c.lineWidth = 1.6; c.setLineDash([9, 30]);
+  const half = city.half, lanes = half > 20 ? [-0.7, -0.35, 0.05, 0.4, 0.75] : [-0.33, 0.45];
+  lanes.forEach((k, n) => {
+    c.lineDashOffset = -t * (11 + n * 3) + n * 17;
+    c.beginPath(); river.forEach((p, i) => i ? c.lineTo(p.x + k * half, p.y) : c.moveTo(p.x + k * half, p.y)); c.stroke();
+  });
   c.setLineDash([]); c.lineDashOffset = 0;
 
   // 시간대 빛: 아침은 따뜻하게, 저녁은 어둑하게. 노선과 차량은 이 위에 그려서 또렷하게 남는다
@@ -242,6 +247,7 @@ function draw(t) {
     path(); c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = m.w + 3; c.stroke();
     path(); c.strokeStyle = l.color; c.lineWidth = m.w; c.stroke();
     if (l.mode === 'sub') { path(); c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1.5; c.setLineDash([6, 7]); c.stroke(); c.setLineDash([]); }
+    if (l.mode === 'ferry') { path(); c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 2; c.setLineDash([1, 7]); c.stroke(); c.setLineDash([]); }
     if (live) {
       c.beginPath(); c.moveTo(pts[pts.length - 1].x, pts[pts.length - 1].y); c.lineTo(pointer.x, pointer.y);
       c.strokeStyle = l.color; c.lineWidth = m.w; c.setLineDash([7, 7]); c.lineDashOffset = -t * 30; c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
@@ -252,7 +258,8 @@ function draw(t) {
         const a = l.stops[i - 1], b = l.stops[i], ang = Math.atan2(b.y - a.y, b.x - a.x);
         for (const p of riverHits(a, b)) {
           c.save(); c.translate(p.x + o.x, p.y + o.y); c.rotate(ang);
-          c.fillStyle = 'rgba(116,179,227,0.78)'; c.fillRect(-10, -m.w / 2 - 2.5, 20, m.w + 5);
+          const tl = half + 2;   // 물 폭만큼 잠긴 것처럼 덮는다
+          c.fillStyle = 'rgba(116,179,227,0.78)'; c.fillRect(-tl, -m.w / 2 - 2.5, tl * 2, m.w + 5);
           c.restore();
         }
       }
@@ -282,7 +289,12 @@ function draw(t) {
 
   // 정류장과 기다리는 승객
   for (const st of stops) {
-    const d = districts[st.d], cap = capOf(st);
+    const d = districts[st.d] || PIER_STYLE, cap = capOf(st);
+    if (st.pier) {   // 물 쪽으로 뻗은 나무 부두
+      c.fillStyle = 'rgba(0,0,0,0.2)'; c.fillRect(Math.min(st.x, st.x - st.side * 22) + 1, st.y - 3, 22, 9);
+      c.fillStyle = '#a5855c'; c.fillRect(Math.min(st.x, st.x - st.side * 22), st.y - 5, 22, 9);
+      c.strokeStyle = '#7a5f3c'; c.lineWidth = 1; c.strokeRect(Math.min(st.x, st.x - st.side * 22), st.y - 5, 22, 9);
+    }
     // 같은 프레임 안에서 생긴 정류장은 born이 t보다 살짝 클 수 있다
     const age = Math.max(0.001, t - (st.born || 0)), grow = age < 0.45 ? 1 + 0.5 * Math.sin(Math.min(1, age / 0.45) * Math.PI) * (1 - age / 0.45) : 1;
     const k = Math.min(1, age / 0.25) * grow;
@@ -307,6 +319,7 @@ function draw(t) {
     c.fillStyle = '#fff'; c.strokeStyle = d.color; c.lineWidth = 4;
     c.beginPath(); c.arc(x, y, (st.hub ? 9 : 10) * k, 0, Math.PI * 2); c.fill(); c.stroke();
     if (st.hub) { c.fillStyle = '#1d2330'; c.font = 'bold 10px sans-serif'; c.fillText('⇄', x, y + 0.5); }
+    else if (st.pier) { c.fillStyle = PIER_STYLE.color; c.font = 'bold 11px sans-serif'; c.fillText('⚓', x, y + 0.5); }
     if (st.over > 0) {
       const blink = st.over > 0.6 && Math.floor(t * 6) % 2 === 0;
       c.strokeStyle = blink ? '#fff' : '#e02020'; c.lineWidth = 5;
@@ -336,15 +349,18 @@ function draw(t) {
 
   // 차량
   for (const l of lines) {
-    const o = lineOffset(l), m = MODES[l.mode], isSub = l.mode === 'sub';
-    const spr = vehicleSprite(isSub ? 'train' : 'bus', l.color);
+    const o = lineOffset(l), m = MODES[l.mode], isSub = l.mode === 'sub', isFerry = l.mode === 'ferry';
+    const spr = vehicleSprite(isSub ? 'train' : isFerry ? 'ferry' : 'bus', l.color);
     for (const v of l.vehicles) {
       const a = l.stops[v.i], b = l.stops[v.j == null ? v.i : v.j];
       if (!a || !b) continue;
       const te = v.t * v.t * (3 - 2 * v.t);     // 출발과 도착을 부드럽게
       const x = a.x + (b.x - a.x) * te + o.x, y = a.y + (b.y - a.y) * te + o.y;
       const ang = a !== b ? Math.atan2(b.y - a.y, b.x - a.x) : 0;
-      const len = isSub ? 44 : 26, wid = isSub ? 13 : 12;
+      const len = isSub ? 44 : isFerry ? 34 : 26, wid = isSub ? 13 : isFerry ? 13.5 : 12;
+      if (isFerry && v.t > 0.02 && v.t < 0.98 && Math.random() < 0.35) {   // 배 뒤로 남는 물거품
+        fxBurst(x - Math.cos(ang) * len / 2, y - Math.sin(ang) * len / 2, 'rgba(255,255,255,0.85)', 1, 14);
+      }
       c.save(); c.translate(x, y); c.rotate(ang);
       c.fillStyle = 'rgba(0,0,0,0.3)'; roundRect(c, -len / 2 + 1.5, -wid / 2 + 3, len, wid, 3); c.fill();
       if (dusk > 0.2 && v.t > 0 && v.t < 1) {   // 전조등
@@ -356,7 +372,8 @@ function draw(t) {
         if (isSub) {   // 두 칸
           c.drawImage(spr, -23.5, -8.5, 24, 17);
           c.drawImage(spr, -0.5, -8.5, 24, 17);
-        } else c.drawImage(spr, -len * 0.6, -len * 0.3, len * 1.2, len * 0.6);
+        } else if (isFerry) c.drawImage(spr, -18.9, -9.45, 37.8, 18.9);
+        else c.drawImage(spr, -len * 0.6, -len * 0.3, len * 1.2, len * 0.6);
       } else { c.fillStyle = l.color; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.fill(); }
       c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.4; roundRect(c, -len / 2, -wid / 2, len, wid, 3); c.stroke();
       c.restore();
