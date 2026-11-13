@@ -189,7 +189,7 @@ function draw(t) {
 
   const c = ctx, s = scale * dpr;
   c.setTransform(1, 0, 0, 1, 0, 0);
-  c.fillStyle = '#1c2026'; c.fillRect(0, 0, cv.width, cv.height);
+  c.fillStyle = '#d5d9c2'; c.fillRect(0, 0, cv.width, cv.height);
   const sx = FX.shake ? (Math.random() - 0.5) * 12 * FX.shake : 0, sy = FX.shake ? (Math.random() - 0.5) * 12 * FX.shake : 0;
   c.setTransform(s, 0, 0, s, (ox + sx) * dpr, (oy + sy) * dpr);
   c.save();

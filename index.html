@@ -3,92 +3,171 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>노선 짜기 프로토타입</title>
+<title>노선 짜기</title>
 <style>
+:root { --paper: #fbf8ef; --paper2: #f3eee0; --ink: #2c3440; --mute: #7b8494; --edge: #ddd4be;
+  --accent: #2f8f5b; --accent-d: #1f6b42; --blue: #2b6cb0; --blue-d: #1e4f85; --warn: #d64545; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #22262d; color: #e6e9ee;
-  font-family: system-ui, 'Malgun Gothic', sans-serif; user-select: none; -webkit-user-select: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #d5d9c2; color: var(--ink);
+  font-family: 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
 body { display: flex; flex-direction: column; height: 100dvh; }
-#hud { display: flex; align-items: center; gap: 8px; padding: 3px 6px; background: #2b3039; font-size: 13px; white-space: nowrap; }
-#hud b { font-size: 14px; color: #fff; }
-#hud button { padding: 3px 7px; min-height: 28px; font-size: 12.5px; }
-#dayBar { width: 60px !important; }
+svg.ic { flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.card { background: var(--paper); border: 1px solid var(--edge); border-radius: 12px;
+  box-shadow: 0 2px 0 rgba(120,105,70,0.20), 0 5px 12px rgba(60,50,30,0.10); }
+button { font: inherit; color: var(--ink); cursor: pointer; touch-action: manipulation; border: 0; background: none; padding: 0; }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- 위쪽 줄 ---------- */
+#hud { display: flex; align-items: center; gap: 6px; padding: 6px 8px 5px; white-space: nowrap; }
+#city { display: flex; align-items: center; gap: 7px; padding: 3px 10px 3px 4px; }
+#dial { width: 34px; height: 34px; position: relative; flex: none; }
+#dial svg.ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+#dialIcon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #e09a1a; }
+#cityName { font-weight: 800; font-size: 14px; line-height: 1.15; }
+#cityLine { font-size: 11px; color: var(--mute); line-height: 1.2; }
+#cityLine b { color: var(--ink); }
+#chips { display: flex; gap: 5px; align-items: center; min-width: 0; overflow: hidden; }
+.chip { display: flex; align-items: center; gap: 4px; padding: 5px 8px; font-size: 13px; font-weight: 700; }
+.chip svg { color: var(--mute); }
+.chip small { font-weight: 600; font-size: 10px; color: var(--mute); margin-right: 1px; }
+.chip.bad { color: var(--warn); } .chip.bad svg { color: var(--warn); }
 #hud .sp { flex: 1; }
-#dayBar { width: 90px; height: 8px; background: #454c58; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
-#dayFill { height: 100%; width: 0; background: #ffd166; }
-#main { flex: 1; display: flex; min-height: 0; }
-#tools { display: flex; flex-direction: column; gap: 3px; padding: 4px; background: #2b3039; width: 100px; overflow-y: auto; overflow-x: hidden; }
-button { font: inherit; color: #fff; background: #3a414d; border: 2px solid transparent; border-radius: 7px;
-  padding: 4px 8px; min-height: 30px; cursor: pointer; touch-action: manipulation; }
-button.on { border-color: #fff; }
-button:disabled { opacity: 0.4; }
-#tools button { text-align: left; font-size: 12.5px; display: flex; align-items: center; gap: 4px; white-space: nowrap; padding: 4px 5px; }
-#tools .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
-#tools small { margin-left: auto; color: #aab3c0; font-size: 10.5px; }
-#tools .act { justify-content: center; background: #4a5362; }
-#tools hr { width: 100%; border: 0; border-top: 1px solid #454c58; margin: 2px 0; }
-#wrap { flex: 1; position: relative; min-width: 0; }
+.ctl { display: flex; padding: 3px; gap: 2px; }
+.ctl button { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: var(--mute); }
+.ctl button:hover { background: var(--paper2); }
+.ctl button.on { background: var(--accent); color: #fff; box-shadow: 0 2px 0 var(--accent-d); }
+
+/* ---------- 왼쪽 노선 팔레트 ---------- */
+#main { flex: 1; display: flex; min-height: 0; padding: 0 8px 8px; gap: 8px; }
+#tools { width: 118px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: hidden; padding-bottom: 3px; scrollbar-width: none; }
+#tools::-webkit-scrollbar { display: none; }
+.cap { font-size: 10px; font-weight: 800; color: var(--mute); letter-spacing: 0.5px; padding: 5px 8px 2px; }
+.lines { padding-bottom: 4px; }
+button.line { --c: #888; display: flex; align-items: center; gap: 5px; width: calc(100% - 8px); margin: 2px 4px; padding: 4px 6px 4px 9px;
+  border-radius: 8px; position: relative; font-size: 12px; font-weight: 700; min-height: 28px; text-align: left; white-space: nowrap; }
+button.line::before { content: ''; position: absolute; left: 2px; top: 4px; bottom: 4px; width: 4px; border-radius: 2px; background: var(--c); }
+button.line svg { color: var(--c); }
+button.line small { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--mute); }
+button.line.on { background: #fff; box-shadow: 0 0 0 2px var(--c), 0 2px 5px rgba(0,0,0,0.12); }
+.acts { padding-bottom: 5px; }
+.acts .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 2px 5px; }
+.acts button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 36px; border-radius: 8px;
+  background: var(--paper2); border: 1px solid var(--edge); font-size: 10px; font-weight: 700; color: var(--ink); }
+.acts button:active { transform: translateY(1px); }
+.acts button.wide { grid-column: 1 / 3; flex-direction: row; gap: 5px; font-size: 11.5px; min-height: 32px; }
+.acts button.on { background: #ffe9a8; border-color: #d9a400; }
+.acts button.danger { color: var(--warn); }
+
+/* ---------- 지도 ---------- */
+#wrap { flex: 1; position: relative; min-width: 0; border-radius: 14px; overflow: hidden;
+  border: 3px solid #c9bf9f; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 3px 0 rgba(120,105,70,0.25), 0 6px 14px rgba(60,50,30,0.14); background: #d5d9c2; }
 canvas { display: block; touch-action: none; }
-.overlay { position: absolute; inset: 0; background: rgba(20,22,26,0.85); display: flex; align-items: center; justify-content: center; padding: 12px; }
+
+/* ---------- 덮는 화면 ---------- */
+.overlay { position: absolute; inset: 0; background: rgba(46,52,40,0.50); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 10px; }
 .overlay.hide { display: none; }
-.panel { background: #2b3039; border-radius: 12px; padding: 16px 20px; max-width: 580px; max-height: 100%; overflow: auto; line-height: 1.5; font-size: 14px; }
-.panel h2 { margin: 0 0 6px; font-size: 19px; }
+.panel { padding: 16px 20px; max-width: 600px; width: 100%; max-height: 100%; overflow: auto; line-height: 1.5; font-size: 13.5px; border-radius: 16px; }
+.panel h2 { margin: 0; font-size: 21px; font-weight: 800; }
+.panel .sub { color: var(--mute); font-size: 12.5px; margin: 2px 0 8px; }
 .panel ul { margin: 6px 0 10px; padding-left: 18px; }
-.panel button { width: 100%; background: #2f7d45; font-size: 15px; min-height: 42px; margin-top: 6px; position: sticky; bottom: 0; }
-@media (max-height: 480px) { .panel { font-size: 12.5px; line-height: 1.4; padding: 10px 16px; } .panel h2 { font-size: 16px; } }
+.panel li { margin: 2px 0; }
+.btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 42px; border-radius: 11px;
+  background: var(--accent); color: #fff; font-size: 15px; font-weight: 800; box-shadow: 0 3px 0 var(--accent-d); }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-d); }
+.btn.blue { background: var(--blue); box-shadow: 0 3px 0 var(--blue-d); }
+.btnrow { display: flex; gap: 8px; position: sticky; bottom: 0; padding-top: 6px; background: linear-gradient(transparent, var(--paper) 30%); }
+.rewards { display: flex; gap: 8px; margin-top: 10px; }
+.rewards button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 13px; text-align: center;
+  background: #fff; border: 2px solid var(--edge); box-shadow: 0 3px 0 rgba(120,105,70,0.25); }
+.rewards button:hover { border-color: var(--accent); }
+.rewards button:active { transform: translateY(2px); }
+.rewards .ric { width: 46px; height: 46px; border-radius: 50%; background: #e7f3ea; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.rewards b { font-size: 14px; }
+.rewards span { font-size: 11px; color: var(--mute); line-height: 1.3; }
+.stats { display: flex; gap: 8px; margin: 10px 0; }
+.stats div { flex: 1; background: var(--paper2); border-radius: 10px; padding: 8px; text-align: center; font-size: 11px; color: var(--mute); }
+.stats b { display: block; font-size: 20px; color: var(--ink); }
+@media (max-height: 480px) {
+  .panel { font-size: 12px; line-height: 1.38; padding: 10px 16px; } .panel h2 { font-size: 17px; }
+  #hud { padding: 4px 8px 4px; } #main { padding: 0 6px 6px; gap: 6px; } #tools { width: 108px; }
+}
+@media (max-width: 900px) { .chip.opt { display: none; } }
 </style>
 </head>
 <body>
 <div id="hud">
-  <span><b id="day">1</b>일차 <b id="phase"></b> <span id="dayBar"><span id="dayFill" style="display:block"></span></span></span>
-  <span>수송 <b id="delivered">0</b></span>
-  <span>선로 <b id="track">0</b></span>
-  <span>다리 <b id="bridge">0</b></span>
-  <span>여유 <b id="spare">0</b></span>
+  <div id="city" class="card">
+    <div id="dial">
+      <svg class="ring" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14.5" fill="none" stroke="#e9e2cf" stroke-width="4"/>
+        <circle id="dialRing" cx="17" cy="17" r="14.5" fill="none" stroke="#f0b429" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 100"/></svg>
+      <div id="dialIcon"></div>
+    </div>
+    <div><div id="cityName"></div><div id="cityLine"></div></div>
+  </div>
+  <div id="chips">
+    <div class="chip card opt" title="인구"><span data-ic="people"></span><small>인구</small><span id="vPop">0</span></div>
+    <div class="chip card" id="satChip" title="시민 만족도"><span data-ic="smile"></span><span id="vSat">100%</span></div>
+    <div class="chip card" title="수송한 승객"><span data-ic="pin"></span><span id="vDelivered">0</span></div>
+    <div class="chip card" title="남은 선로"><span data-ic="track"></span><span id="vTrack">0</span></div>
+    <div class="chip card" title="남은 다리"><span data-ic="bridge"></span><span id="vBridge">0</span></div>
+    <div class="chip card" title="여유 버스"><span data-ic="bus"></span><span id="vBus">0</span></div>
+    <div class="chip card" title="여유 열차"><span data-ic="train"></span><span id="vTrain">0</span></div>
+  </div>
   <span class="sp"></span>
-  <button id="saveBtn">저장</button>
-  <button id="muteBtn">소리 켬</button>
-  <button data-speed="0">멈춤</button>
-  <button data-speed="1" class="on">1배</button>
-  <button data-speed="2">2배</button>
+  <div class="ctl card">
+    <button id="saveBtn" title="저장"><span data-ic="save"></span></button>
+    <button id="muteBtn" title="소리"></button>
+  </div>
+  <div class="ctl card">
+    <button data-speed="0" title="멈춤"><span data-ic="pause"></span></button>
+    <button data-speed="1" class="on" title="보통"><span data-ic="play"></span></button>
+    <button data-speed="2" title="빠르게"><span data-ic="fast"></span></button>
+  </div>
 </div>
 <div id="main">
   <div id="tools"></div>
   <div id="wrap">
     <canvas id="cv"></canvas>
-    <div id="start" class="overlay"><div class="panel">
+    <div id="start" class="overlay"><div class="panel card">
       <h2>노선 짜기</h2>
-      <button id="contBtn" style="display:none;position:static;background:#2b6cb0;margin:0 0 8px"></button>
-      정류장에 승객이 넘치지 않게 버스와 지하철 노선을 짜세요.
+      <div class="sub"><b id="startCity"></b>의 교통국장으로 부임했습니다. 정류장에 승객이 넘치지 않게 버스와 지하철 노선을 짜세요.</div>
       <ul>
         <li>승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.</li>
         <li>왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 끝 정류장에서 다시 끌면 연장됩니다.</li>
         <li><b>버스</b>는 느리고 6명만 타지만 어디든 깔 수 있습니다. <b>지하철</b>은 빠르고 16명이 타지만 남은 <b>선로 길이</b>만큼만 깔 수 있고, 설 때마다 오래 걸립니다.</li>
         <li><b>강</b>: 버스 노선은 건널 때마다 다리 1개를 씁니다. 지하철은 터널로 건너지만 선로가 120 더 듭니다.</li>
-        <li><b>환승</b>에는 2초가 걸리고, 승객은 배차 간격(노선 버튼의 초)까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.</li>
+        <li><b>환승</b>에는 2초가 걸리고, 승객은 배차 간격(노선 옆의 초)까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.</li>
         <li><b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다.</li>
         <li>아침에는 주거 → 업무, 저녁에는 업무·상업 → 주거로 몰립니다. 새 정류장 자리는 미리 점선으로 보입니다.</li>
-        <li>하루가 끝나면 보상 셋 중 하나를 고릅니다. 8일을 넘기면 완주입니다.</li>
+        <li>하루가 끝나면 지원 셋 중 하나를 고릅니다. 8일을 넘기면 완주입니다.</li>
         <li>정류장에 8명 넘게 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.</li>
       </ul>
-      <button id="startBtn">새 게임 시작</button>
+      <div class="btnrow">
+        <button id="contBtn" class="btn blue" style="display:none"></button>
+        <button id="startBtn" class="btn">새 도시 시작</button>
+      </div>
     </div></div>
-    <div id="reward" class="overlay hide"><div class="panel">
+    <div id="reward" class="overlay hide"><div class="panel card">
       <h2 id="rTitle"></h2>
-      <button id="r0"></button>
-      <button id="r1"></button>
-      <button id="r2"></button>
+      <div class="sub" id="rSub"></div>
+      <div class="rewards"><button id="r0"></button><button id="r1"></button><button id="r2"></button></div>
     </div></div>
-    <div id="over" class="overlay hide"><div class="panel">
+    <div id="over" class="overlay hide"><div class="panel card" style="max-width:440px">
       <h2>정류장 마비!</h2>
-      <p><b id="oDay"></b>일차까지 버팀 · 수송한 승객 <b id="oDelivered"></b>명</p>
-      <p id="oBest"></p>
-      <button id="againBtn">다시 하기</button>
+      <div class="sub"><b id="oCity"></b>의 교통이 멈췄습니다.</div>
+      <div class="stats">
+        <div><b id="oDay"></b>일차까지</div>
+        <div><b id="oDelivered"></b>명 수송</div>
+        <div><b id="oPop"></b>인구</div>
+      </div>
+      <p id="oBest" style="margin:0 0 8px;text-align:center;font-weight:700"></p>
+      <button id="againBtn" class="btn">새 도시에서 다시</button>
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=4"></script>
-<script src="render.js?v=4"></script>
+<script src="audio.js?v=5"></script>
+<script src="render.js?v=5"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -423,25 +502,27 @@ function step(dt) {
 // ---------- 보상 ----------
 function offerReward() {
   const vehicles = [
-    { text: '버스 +2대', run: () => { spare.bus += 2; } },
-    { text: '지하철 열차 +1편성', run: () => { spare.sub += 1; } },
+    { ic: 'bus', title: '버스 2대', desc: '원하는 버스 노선에 증차', run: () => { spare.bus += 2; } },
+    { ic: 'train', title: '열차 1편성', desc: '원하는 지하철 노선에 증차', run: () => { spare.sub += 1; } },
   ];
   const others = [
-    { text: '선로 +350', run: () => { track += 350; } },
-    { text: '다리 +1 (버스가 강을 건널 수 있는 횟수)', run: () => { bridges += 1; } },
-    { text: '환승 센터 +1 (정류장 하나: 수용 20명, 빠른 환승)', run: () => { hubs += 1; } },
+    { ic: 'track', title: '선로 +350', desc: '지하철을 더 길게', run: () => { track += 350; } },
+    { ic: 'bridge', title: '다리 +1', desc: '버스가 강을 한 번 더 건넘', run: () => { bridges += 1; } },
+    { ic: 'hub', title: '환승 센터 +1', desc: '수용 20명, 빠른 환승', run: () => { hubs += 1; } },
   ];
   const bus = lines.find(l => l.mode === 'bus' && !l.unlocked);
   const sub = lines.find(l => l.mode === 'sub' && !l.unlocked);
-  if (bus) others.push({ text: '버스 노선 +1 (버스 1대 포함)', run: () => { bus.unlocked = true; } });
-  if (sub) others.push({ text: '지하철 노선 +1 (열차 1편성, 선로 +200 포함)', run: () => { sub.unlocked = true; track += 200; } });
+  if (bus) others.push({ ic: 'bus', title: '버스 노선 +1', desc: '버스 1대 포함', run: () => { bus.unlocked = true; } });
+  if (sub) others.push({ ic: 'train', title: '지하철 노선 +1', desc: '열차 1편성, 선로 +200 포함', run: () => { sub.unlocked = true; track += 200; } });
   // 셋 중 하나는 반드시 차량 보상: 필요한 차량이 며칠씩 안 나오는 불운을 막는다
   rewardOpts = shuffle([shuffle(vehicles)[0], ...shuffle(others).slice(0, 2)]);
   const done = day === GOAL_DAY && !cleared;
   if (done) cleared = true;
-  $('rTitle').textContent = done ? GOAL_DAY + '일 완주! 여기부터는 무한 모드입니다. 보상을 고르세요'
-    : day + '일차 종료 — 하나를 고르세요';
-  rewardOpts.forEach((o, i) => { $('r' + i).textContent = o.text; });
+  $('rTitle').textContent = done ? GOAL_DAY + '일 완주!' : day + '일차 운영 종료';
+  $('rSub').textContent = (done ? '여기부터는 무한 모드입니다. ' : '') + '시의회가 내일을 위한 지원을 제안합니다. 하나를 고르세요.';
+  rewardOpts.forEach((o, i) => {
+    $('r' + i).innerHTML = '<div class="ric">' + icon(o.ic, 26) + '</div><b>' + o.title + '</b><span>' + o.desc + '</span>';
+  });
   $('reward').classList.remove('hide');
   sfxDayEnd();
 }
@@ -458,12 +539,49 @@ function takeReward(i) {
 function loadBest() { try { return +localStorage.getItem(BEST_KEY) || 0; } catch (e) { return 0; } }
 function saveBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {} }
 
+// ---------- 아이콘 (선으로 그린 SVG) ----------
+const ICON = {
+  bus: '<rect x="4" y="4" width="16" height="13" rx="3"/><path d="M4 11h16"/><circle cx="8" cy="18.5" r="1.5"/><circle cx="16" cy="18.5" r="1.5"/>',
+  train: '<rect x="6" y="3" width="12" height="14" rx="3"/><path d="M6 10h12M9 21l-2-4M15 21l2-4"/><circle cx="9.5" cy="13.5" r="1"/><circle cx="14.5" cy="13.5" r="1"/>',
+  track: '<path d="M7 3v18M17 3v18M7 7h10M7 12h10M7 17h10"/>',
+  bridge: '<path d="M2 16h20M4 16V9M20 16V9M4 9c4 5 12 5 16 0M9 16v-3.5M15 16v-3.5"/>',
+  hub: '<circle cx="12" cy="12" r="8.5"/><path d="M8 10h8l-2.5-2.5M16 14H8l2.5 2.5"/>',
+  people: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 3-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2.3"/><path d="M16.5 14c3 0 4.5 2 4.5 5"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14c1.5 2 6.5 2 8 0"/><path d="M9 9.5v1M15 9.5v1"/>',
+  pin: '<path d="M12 21s7-6 7-11a7 7 0 10-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+  sound: '<path d="M4 10v4h3l5 4V6L7 10z"/><path d="M15.5 9a4 4 0 010 6M18 6.5a8 8 0 010 11"/>',
+  mute: '<path d="M4 10v4h3l5 4V6L7 10z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  play: '<path d="M7 5l12 7-12 7z"/>',
+  fast: '<path d="M4 5l8 7-8 7zM13 5l8 7-8 7z"/>',
+  undo: '<path d="M8 6L3 11l5 5"/><path d="M3 11h11a5 5 0 010 10h-3"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  moon: '<path d="M20 14A8 8 0 019.5 4 8 8 0 1020 14z"/>',
+};
+const icon = (name, size) => '<svg class="ic" viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) + '">' + ICON[name] + '</svg>';
+document.querySelectorAll('[data-ic]').forEach(e => { e.outerHTML = icon(e.dataset.ic, 16); });
+
+// ---------- 도시 정보(분위기용 수치) ----------
+const CITY_NAMES = ['한울', '새별', '푸른솔', '은빛', '누리', '다온', '가람', '솔빛', '미르', '하늬', '온새미', '도담'];
+let cityName = '';
+const population = () => stops.length * 1800 + day * 650 + delivered * 4;
+// 시민 만족도: 정류장이 붐빌수록 떨어진다
+function satisfaction() {
+  if (!stops.length) return 100;
+  const bad = stops.reduce((s, st) => s + Math.min(1, st.wait.length / capOf(st)) * 0.35 + Math.min(1, st.over) * 0.65, 0) / stops.length;
+  return Math.max(0, Math.round(100 - bad * 100));
+}
+
 // ---------- 저장과 이어하기 ----------
 const SAVE_KEY = 'transit-proto-save';
 function saveGame(manual) {
   if (!started || over) return;
   const data = {
-    v: 1, districts, river, track, spare, bridges, hubs, day, clock, delivered, stopTimer, cleared, now,
+    v: 1, city: cityName, districts, river, track, spare, bridges, hubs, day, clock, delivered, stopTimer, cleared, now,
     pendingStop: pendingStop ? { x: pendingStop.x, y: pendingStop.y, d: pendingStop.d.id } : null,
     stops: stops.map(s => ({ x: s.x, y: s.y, d: s.d, hub: s.hub, over: s.over, acc: s.acc, wait: s.wait.map(p => [p.dest, p.ready || 0]) })),
     lines: lines.map(l => ({ unlocked: l.unlocked, extra: l.extra, stops: l.stops.map(s => s.idx),
@@ -480,7 +598,7 @@ function loadGame() {
   const data = readSave();
   if (!data) return false;
   try {
-    districts = data.districts; river = data.river;
+    districts = data.districts; river = data.river; cityName = data.city || cityName;
     track = data.track; spare = data.spare; bridges = data.bridges; hubs = data.hubs; day = data.day; clock = data.clock;
     delivered = data.delivered; stopTimer = data.stopTimer; cleared = data.cleared; now = data.now;
     stops = data.stops.map((s, i) => ({ idx: i, x: s.x, y: s.y, d: s.d, hub: s.hub, over: s.over, acc: s.acc, born: 0,
@@ -503,6 +621,8 @@ function loadGame() {
 }
 
 function newGame() {
+  cityName = CITY_NAMES[Math.floor(Math.random() * CITY_NAMES.length)] + '시';
+  $('startCity').textContent = cityName;
   genMap(); stops = []; makeLines();
   track = START_TRACK; spare = { ...START_SPARE }; bridges = START_BRIDGES; hubs = START_HUBS; day = 1;
   hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
@@ -521,48 +641,61 @@ function gameOver() {
   const prev = loadBest(), isBest = delivered > prev;
   if (isBest) saveBest(delivered);
   $('oDay').textContent = day;
+  $('oCity').textContent = cityName;
+  $('oPop').textContent = population().toLocaleString();
   $('oDelivered').textContent = delivered;
   $('oBest').textContent = isBest ? '최고 기록 갱신!' : '최고 기록 ' + prev + '명';
   $('over').classList.remove('hide');
 }
 
-// ---------- 왼쪽 도구 ----------
+// ---------- 왼쪽 노선 팔레트 ----------
 function renderTools() {
   const box = $('tools');
   box.innerHTML = '';
+  const list = document.createElement('div');
+  list.className = 'card lines';
+  list.innerHTML = '<div class="cap">노선</div>';
   for (const l of lines) {
     if (!l.unlocked) continue;
     const b = document.createElement('button');
-    b.className = l === sel ? 'on' : '';
+    b.className = 'line' + (l === sel ? ' on' : '');
+    b.style.setProperty('--c', l.color);
     const hw = headway(l);
-    b.innerHTML = '<span class="sw" style="background:' + l.color + ';border:1px solid #999"></span>' + MODES[l.mode].name + ' ' + l.n
-      + (hw < Infinity ? '<small>' + Math.round(hw) + '초</small>' : '');
+    b.innerHTML = icon(l.mode === 'bus' ? 'bus' : 'train', 16) + '<span>' + MODES[l.mode].name + ' ' + l.n + '</span>'
+      + '<small>' + (hw < Infinity ? Math.round(hw) + '초' : '–') + '</small>';
     b.title = '배차 간격';
     b.onclick = () => { sel = l; hubMode = false; sfxClick(); renderTools(); };
-    box.appendChild(b);
+    list.appendChild(b);
   }
-  box.appendChild(document.createElement('hr'));
-  const act = (text, fn) => {
+  box.appendChild(list);
+
+  const acts = document.createElement('div');
+  acts.className = 'card acts';
+  const count = sel.stops.length > 1 ? 1 + sel.extra : 0;
+  acts.innerHTML = '<div class="cap">' + MODES[sel.mode].name + ' ' + sel.n + ' · ' + count + '대</div>';
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  const act = (ic, text, fn, cls) => {
     const b = document.createElement('button');
-    b.className = 'act'; b.textContent = text;
+    b.className = cls || '';
+    b.innerHTML = icon(ic, 16) + '<span>' + text + '</span>';
     b.onclick = () => { fn(sel); renderTools(); };
-    box.appendChild(b);
+    grid.appendChild(b);
+    return b;
   };
-  act('차량 +', addVehicle);
-  act('차량 −', removeVehicle);
-  act('한 칸 취소', l => { undoLast(l); sfxUndo(); });
-  act('노선 지우기', l => { clearLine(l); sfxUndo(); });
-  const hb = document.createElement('button');
-  hb.className = 'act' + (hubMode ? ' on' : '');
-  hb.textContent = '환승 센터 ' + hubs;
+  act('plus', '증차', addVehicle);
+  act('minus', '감차', removeVehicle);
+  act('undo', '한 칸 취소', l => { undoLast(l); sfxUndo(); });
+  act('trash', '지우기', l => { clearLine(l); sfxUndo(); }, 'danger');
+  const hb = act('hub', '환승 센터 ×' + hubs, () => { hubMode = !hubMode; if (hubMode) flash('환승 센터로 만들 정류장을 누르세요'); }, 'wide' + (hubMode ? ' on' : ''));
   hb.disabled = hubs < 1;
-  hb.onclick = () => { hubMode = !hubMode; if (hubMode) flash('환승 센터로 만들 정류장을 누르세요'); renderTools(); };
-  box.appendChild(hb);
+  acts.appendChild(grid);
+  box.appendChild(acts);
 }
 
 // ---------- 조작 ----------
 function resize() {
-  const box = cv.parentElement.getBoundingClientRect();
+  const box = { width: cv.parentElement.clientWidth, height: cv.parentElement.clientHeight };   // 테두리 안쪽 크기
   dpr = window.devicePixelRatio || 1;
   cv.width = Math.max(1, Math.round(box.width * dpr)); cv.height = Math.max(1, Math.round(box.height * dpr));
   cv.style.width = box.width + 'px'; cv.style.height = box.height + 'px';
@@ -624,16 +757,23 @@ function frame(now) {
   draw(now / 1000);
   const crowd = stops.reduce((m, s) => Math.max(m, s.over), 0);
   bgmTick(phase(), crowd, speed === 0 || !started || over || !!rewardOpts);
-  $('day').textContent = day;
-  // 다음 시간대를 10초 전부터 예고
+  // 위쪽 줄: 도시 시계, 다음 시간대 예고(10초 전부터), 자원
   const f = clock / DAY, cut = f < 0.35 ? 0.35 : f < 0.65 ? 0.65 : 1, left = (cut - f) * DAY;
   const nextName = cut === 0.35 ? PHASE_NAME.mid : cut === 0.65 ? PHASE_NAME.pm : '하루 끝';
-  $('phase').textContent = PHASE_NAME[phase()] + (left <= 10 ? ' → ' + nextName + ' ' + Math.ceil(left) + '초' : '');
-  $('dayFill').style.width = (clock / DAY * 100) + '%';
-  $('delivered').textContent = delivered;
-  $('track').textContent = Math.max(0, Math.floor(track - trackUsed()));
-  $('spare').textContent = '버스 ' + spare.bus + ' · 열차 ' + spare.sub;
-  $('bridge').textContent = (bridges - bridgesUsed()) + '/' + bridges;
+  $('cityName').textContent = cityName;
+  $('cityLine').innerHTML = '<b>' + day + '일차</b> · ' + PHASE_NAME[phase()] + (left <= 10 ? ' → ' + nextName + ' ' + Math.ceil(left) + '초' : '');
+  $('dialRing').setAttribute('stroke-dasharray', (f * 91.1).toFixed(1) + ' 100');
+  const dialKind = phase() === 'pm' ? 'moon' : 'sun';
+  if (frame.dial !== dialKind) { frame.dial = dialKind; $('dialIcon').innerHTML = icon(dialKind, 17); $('dialIcon').style.color = dialKind === 'moon' ? '#5b6bbf' : '#e09a1a'; }
+  const sat = satisfaction();
+  $('vSat').textContent = sat + '%';
+  $('satChip').classList.toggle('bad', sat < 60);
+  $('vPop').textContent = population().toLocaleString();
+  $('vDelivered').textContent = delivered;
+  $('vTrack').textContent = Math.max(0, Math.floor(track - trackUsed()));
+  $('vBridge').textContent = (bridges - bridgesUsed()) + '/' + bridges;
+  $('vBus').textContent = spare.bus;
+  $('vTrain').textContent = spare.sub;
 }
 
 document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
@@ -647,18 +787,20 @@ $('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
 setInterval(() => { if (!rewardOpts) saveGame(); }, 5000);
 addEventListener('pagehide', () => saveGame());
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
-$('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').textContent = AU.muted ? '소리 끔' : '소리 켬'; };
+$('muteBtn').innerHTML = icon('sound', 16);
+$('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').innerHTML = icon(AU.muted ? 'mute' : 'sound', 16); };
 addEventListener('pointerdown', audioInit, { passive: true });
 $('againBtn').onclick = () => { clearSave(); newGame(); };
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
 $('r2').onclick = () => takeReward(2);
 addEventListener('resize', resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe($('wrap'));
 
 newGame();
 { // 저장된 판이 있으면 이어하기 버튼을 보여 준다
   const sv = readSave();
-  if (sv) { $('contBtn').style.display = ''; $('contBtn').textContent = '이어하기 (' + sv.day + '일차 · 수송 ' + sv.delivered + '명)'; }
+  if (sv) { $('contBtn').style.display = ''; $('contBtn').textContent = (sv.city || '도시') + ' 이어하기 · ' + sv.day + '일차'; }
 }
 resize();
 requestAnimationFrame(frame);
