@@ -267,7 +267,8 @@ function draw(t) {
   // 정류장과 기다리는 승객
   for (const st of stops) {
     const d = districts[st.d], cap = capOf(st);
-    const age = t - (st.born || 0), grow = age < 0.45 ? 1 + 0.5 * Math.sin(Math.min(1, age / 0.45) * Math.PI) * (1 - age / 0.45) : 1;
+    // 같은 프레임 안에서 생긴 정류장은 born이 t보다 살짝 클 수 있다
+    const age = Math.max(0.001, t - (st.born || 0)), grow = age < 0.45 ? 1 + 0.5 * Math.sin(Math.min(1, age / 0.45) * Math.PI) * (1 - age / 0.45) : 1;
     const k = Math.min(1, age / 0.25) * grow;
     let x = st.x, y = st.y;
     if (st.over > 0.6) { x += Math.sin(t * 40) * 1.2; }

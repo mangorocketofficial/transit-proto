@@ -571,6 +571,7 @@ cv.addEventListener('pointercancel', endDraw);
 
 let last = performance.now();
 function frame(now) {
+  requestAnimationFrame(frame);   // 먼저 예약: 한 프레임에서 오류가 나도 화면이 멈추지 않게
   const dt = Math.min(0.1, (now - last) / 1000) * speed;
   last = now;
   if (started && !over && !rewardOpts && dt > 0) step(dt);
@@ -587,7 +588,6 @@ function frame(now) {
   $('track').textContent = Math.max(0, Math.floor(track - trackUsed()));
   $('spare').textContent = '버스 ' + spare.bus + ' · 열차 ' + spare.sub;
   $('bridge').textContent = (bridges - bridgesUsed()) + '/' + bridges;
-  requestAnimationFrame(frame);
 }
 
 document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
