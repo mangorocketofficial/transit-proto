@@ -1,9 +1,12 @@
 package com.mangorocket.transit;
 
 import android.app.Activity;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -58,6 +61,7 @@ public class MainActivity extends Activity {
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setBackgroundColor(0xFFD5D9C2);
         web.addJavascriptInterface(new AdBridge(), "AndroidAds");
+        web.addJavascriptInterface(new VibBridge(), "AndroidVib");
         setContentView(web);
         web.loadUrl("file:///android_asset/index.html");
         hideBars();
@@ -157,6 +161,21 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void showInterstitial() { main.post(MainActivity.this::showInterstitial); }
         @JavascriptInterface public boolean isRewardedReady() { return rewarded != null; }
+    }
+
+    // 진동. 웹뷰의 navigator.vibrate는 안드로이드가 '터치 진동'으로 분류해서,
+    // 휴대폰에서 '터치 시 진동'을 꺼 두면 세기가 0이 된다. 그래서 앱에서는 직접 진동을 부른다
+    private class VibBridge {
+        @JavascriptInterface public void vibrate(String csv) {
+            Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (v == null || !v.hasVibrator() || csv == null) return;
+            String[] parts = csv.split(",");
+            long[] p = new long[parts.length + 1];          // 맨 앞은 기다리는 시간(0)
+            try { for (int i = 0; i < parts.length; i++) p[i + 1] = Math.max(0, Math.min(1000, Long.parseLong(parts[i].trim()))); }
+            catch (NumberFormatException e) { return; }
+            if (Build.VERSION.SDK_INT >= 26) v.vibrate(VibrationEffect.createWaveform(p, -1));
+            else v.vibrate(p, -1);
+        }
     }
 
     // ---------- 화면 ----------

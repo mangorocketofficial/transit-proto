@@ -1532,7 +1532,11 @@ function applySettings() {
   $('sBgmV').textContent = SET.bgm + '%'; $('sSfxV').textContent = SET.sfx + '%';
   try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) {}
 }
-function buzz(pattern) { if (SET.vib && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
+// 앱에서는 AndroidVib로 직접 진동한다(웹뷰 진동은 '터치 시 진동'을 끄면 느껴지지 않는다)
+function buzz(pattern) {
+  if (!SET.vib) return;
+  try { if (window.AndroidVib) AndroidVib.vibrate(String([].concat(pattern))); else if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+}
 let settingsOpen = false;
 $('setBtn').onclick = () => { sfxClick(); settingsOpen = true; resetArmed = false; $('sReset').textContent = '진행 초기화'; $('settings').classList.remove('hide'); };
 $('sClose').onclick = () => { sfxClick(); settingsOpen = false; $('settings').classList.add('hide'); };
