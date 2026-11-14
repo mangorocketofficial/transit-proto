@@ -1,0 +1,194 @@
+package com.mangorocket.transit;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+import androidx.annotation.NonNull;
+
+import com.google.android.gms.ads.AdError;
+import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.FullScreenContentCallback;
+import com.google.android.gms.ads.LoadAdError;
+import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.interstitial.InterstitialAd;
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
+import com.google.android.gms.ads.rewarded.RewardedAd;
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
+import com.google.android.ump.ConsentInformation;
+import com.google.android.ump.ConsentRequestParameters;
+import com.google.android.ump.UserMessagingPlatform;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+
+// 웹으로 만든 게임(assets/index.html)을 전체 화면 웹뷰에 띄우고, AndroidAds 다리로 AdMob 광고를 보여 준다
+public class MainActivity extends Activity {
+    private WebView web;
+    private final Handler main = new Handler(Looper.getMainLooper());
+
+    private ConsentInformation consent;
+    private final AtomicBoolean adsStarted = new AtomicBoolean(false);
+    private RewardedAd rewarded;
+    private InterstitialAd interstitial;
+    private boolean loadingRewarded, loadingInterstitial;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        web = new WebView(this);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);                    // 저장과 이어하기(localStorage)
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setAllowFileAccess(true);
+        s.setTextZoom(100);                              // 시스템 글자 크기 설정에 화면이 깨지지 않게
+        web.setWebViewClient(new WebViewClient());
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        web.setBackgroundColor(0xFFD5D9C2);
+        web.addJavascriptInterface(new AdBridge(), "AndroidAds");
+        setContentView(web);
+        web.loadUrl("file:///android_asset/index.html");
+        hideBars();
+        requestConsentThenStartAds();
+    }
+
+    // ---------- 광고 동의(UMP) → 광고 초기화 ----------
+    private void requestConsentThenStartAds() {
+        consent = UserMessagingPlatform.getConsentInformation(this);
+        ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();
+        consent.requestConsentInfoUpdate(this, params,
+            () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(this, formError -> {
+                if (consent.canRequestAds()) startAds();
+            }),
+            requestError -> { if (consent.canRequestAds()) startAds(); });
+        // 이전 실행에서 이미 동의를 받았다면 바로 시작한다
+        if (consent.canRequestAds()) startAds();
+    }
+
+    private void startAds() {
+        if (adsStarted.getAndSet(true)) return;
+        new Thread(() -> MobileAds.initialize(this, status -> main.post(() -> {
+            loadRewarded();
+            loadInterstitial();
+        }))).start();
+    }
+
+    private void loadRewarded() {
+        if (rewarded != null || loadingRewarded || !adsStarted.get()) return;
+        loadingRewarded = true;
+        RewardedAd.load(this, BuildConfig.AD_REWARDED, new AdRequest.Builder().build(), new RewardedAdLoadCallback() {
+            @Override public void onAdLoaded(@NonNull RewardedAd ad) { rewarded = ad; loadingRewarded = false; }
+            @Override public void onAdFailedToLoad(@NonNull LoadAdError e) {
+                rewarded = null; loadingRewarded = false;
+                main.postDelayed(MainActivity.this::loadRewarded, 30000);   // 잠시 뒤 다시 시도
+            }
+        });
+    }
+
+    private void loadInterstitial() {
+        if (interstitial != null || loadingInterstitial || !adsStarted.get()) return;
+        loadingInterstitial = true;
+        InterstitialAd.load(this, BuildConfig.AD_INTERSTITIAL, new AdRequest.Builder().build(), new InterstitialAdLoadCallback() {
+            @Override public void onAdLoaded(@NonNull InterstitialAd ad) { interstitial = ad; loadingInterstitial = false; }
+            @Override public void onAdFailedToLoad(@NonNull LoadAdError e) {
+                interstitial = null; loadingInterstitial = false;
+                main.postDelayed(MainActivity.this::loadInterstitial, 60000);
+            }
+        });
+    }
+
+    // 보상형: 끝까지 보면 onAdResult(id, true)
+    private void showRewarded(String id) {
+        RewardedAd ad = rewarded;
+        if (ad == null) { sendResult(id, false, "notready"); loadRewarded(); return; }
+        rewarded = null;
+        final boolean[] earned = { false };
+        ad.setFullScreenContentCallback(new FullScreenContentCallback() {
+            @Override public void onAdDismissedFullScreenContent() {
+                sendResult(id, earned[0], earned[0] ? "" : "closed");
+                loadRewarded();
+            }
+            @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) {
+                sendResult(id, false, "error");
+                loadRewarded();
+            }
+        });
+        ad.show(this, item -> earned[0] = true);
+    }
+
+    private void showInterstitial() {
+        InterstitialAd ad = interstitial;
+        if (ad == null) { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); return; }
+        interstitial = null;
+        ad.setFullScreenContentCallback(new FullScreenContentCallback() {
+            @Override public void onAdDismissedFullScreenContent() { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
+            @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
+        });
+        ad.show(this);
+    }
+
+    private void sendResult(String id, boolean ok, String why) {
+        js("window.onAdResult && onAdResult('" + id + "'," + ok + ",'" + why + "')");
+    }
+
+    private void js(String code) { main.post(() -> web.evaluateJavascript(code, null)); }
+
+    // 게임(자바스크립트)에서 부르는 다리. 웹뷰 스레드에서 불리므로 화면 스레드로 넘긴다
+    private class AdBridge {
+        @JavascriptInterface public void showRewarded(String id) {
+            String safe = id == null ? "" : id.replaceAll("[^A-Za-z0-9_]", "");
+            main.post(() -> MainActivity.this.showRewarded(safe));
+        }
+        @JavascriptInterface public void showInterstitial() { main.post(MainActivity.this::showInterstitial); }
+        @JavascriptInterface public boolean isRewardedReady() { return rewarded != null; }
+    }
+
+    // ---------- 화면 ----------
+    // 상태 표시줄과 내비게이션 바를 숨긴다
+    private void hideBars() {
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideBars();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        web.evaluateJavascript("window.appPause && appPause()", null);   // 저장하고 멈춘 뒤 소리를 끈다
+        web.onPause();
+        web.pauseTimers();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        web.resumeTimers();
+        web.onResume();
+        web.evaluateJavascript("window.appResume && appResume()", null);
+    }
+
+    // 뒤로 가기는 앱을 끄지 않고 뒤로 보낸다(진행 중인 판을 지키기 위해)
+    @Override
+    public void onBackPressed() {
+        moveTaskToBack(true);
+    }
+}

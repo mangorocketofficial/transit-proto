@@ -87,6 +87,20 @@ canvas { display: block; touch-action: none; }
 .btn.danger { background: #fff; color: var(--warn); border: 2px solid var(--warn); box-shadow: 0 3px 0 var(--warn); font-size: 14px; }
 .tips { background: var(--paper2); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
 .tips:empty { display: none; }
+.adrow { display: flex; gap: 8px; margin-top: 8px; }
+.adbtn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border-radius: 10px; background: #fff7dc;
+  border: 1.5px solid #e0b43a; color: #8a5d00; font-size: 12.5px; font-weight: 800; }
+.adbtn:disabled, .adbig:disabled { opacity: 0.45; }
+.adbtn[hidden], .adbig[hidden] { display: none; }
+.btn.adbig { background: #f0b429; color: #3a2a00; box-shadow: 0 3px 0 #b8820a; margin-bottom: 6px; }
+.adtag { font-size: 10px; font-weight: 800; background: #3a2a00; color: #ffd76a; border-radius: 5px; padding: 1px 5px; }
+.premlink { text-align: center; font-size: 12px; margin: 4px 0 6px; }
+.premlink:empty { display: none; }
+.premlink button, .linkbtn { color: var(--blue); font-weight: 700; text-decoration: underline; font-size: 12px; }
+.linkbtn { display: block; margin: 6px auto 0; }
+.perks { margin: 10px 0; padding-left: 18px; line-height: 1.55; }
+.premstate { text-align: center; font-weight: 800; margin-bottom: 8px; color: var(--accent-d); }
+.premstate:empty { display: none; }
 .tips .th { font-weight: 800; margin-bottom: 2px; }
 .tips ul { margin: 2px 0 0; padding-left: 16px; }
 .tips .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 2px; border: 1px solid rgba(0,0,0,0.3); }
@@ -197,6 +211,8 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       <div class="sub" id="rSub"></div>
       <div id="rGrade" class="grade"></div>
       <div class="rewards"><button id="r0"></button><button id="r1"></button><button id="r2"></button><button id="r3"></button></div>
+      <div class="adrow"><button id="adReroll" class="adbtn"></button><button id="adMore" class="adbtn"></button></div>
+      <div class="premlink" id="premR"></div>
     </div></div>
     <div id="settings" class="overlay hide"><div class="panel card" style="max-width:420px">
       <h2>설정</h2>
@@ -209,7 +225,20 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
         <button id="sTut" class="btn ghost">튜토리얼 다시 하기</button>
         <button id="sReset" class="btn danger">진행 초기화</button>
       </div>
+      <button id="sPrem" class="btn blue" style="margin-bottom:8px"></button>
       <div class="btnrow"><button id="sClose" class="btn">닫기</button></div>
+    </div></div>
+    <div id="premium" class="overlay hide"><div class="panel card" style="max-width:440px">
+      <h2>프리미엄</h2>
+      <div class="sub">한 번 구매로 계속 쓰는 상품입니다.</div>
+      <ul class="perks">
+        <li><b>판 사이 광고 없음</b></li>
+        <li><b>광고 없이 보상</b>: 부활, 지원 다시 뽑기, 지원 하나 더를 광고를 보지 않고 바로 받습니다(하루 횟수는 같습니다).</li>
+        <li>개발을 응원해 주셔서 고맙습니다. 앞으로 나올 도시와 기능도 이어서 만들어 가겠습니다.</li>
+      </ul>
+      <div id="premState" class="premstate"></div>
+      <div class="btnrow"><button id="pBuy" class="btn blue">구매하기</button><button id="pClose" class="btn ghost">닫기</button></div>
+      <button id="pRestore" class="linkbtn">구매 복원</button>
     </div></div>
     <div id="over" class="overlay hide"><div class="panel card" style="max-width:440px">
       <h2 id="oTitle">정류장 마비!</h2>
@@ -221,12 +250,14 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       </div>
       <div id="oTips" class="tips"></div>
       <p id="oBest" style="margin:0 0 8px;text-align:center;font-weight:700"></p>
+      <button id="reviveBtn" class="btn adbig"></button>
+      <div class="premlink" id="premO"></div>
       <div class="btnrow"><button id="retryBtn" class="btn blue">같은 지도로 다시</button><button id="againBtn" class="btn">새 지도로</button></div>
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=15"></script>
-<script src="render.js?v=15"></script>
+<script src="audio.js?v=16"></script>
+<script src="render.js?v=16"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -324,6 +355,9 @@ let mountain, boostLeft, burstLeft, burstAcc, siteChoice;   // 산(산악), 임�
 let upg = { cap: {}, speed: {}, stops: 0 };   // 시의회 지원으로 받은 개량
 let mapSeed = 0, rs = 0;       // 지도 번호와 지도·성장용 난수 상태(같은 번호면 같은 지도, 같은 성장)
 let sched = [], schedDay = 0;  // 오늘 정류장이 생길(또는 붐빌) 시각 목록
+let adUse = { revived: false, reroll: false, more: false };   // 이번 판·오늘 쓴 광고 보상
+let reviveT = 0;               // 부활 뒤 정류장 정원이 두 배인 남은 시간
+let rewardDoneMsg = '', rewardDoneTitle = false;
 let crowdLv = 0;              // 정류장이 더 생길 자리가 없을 때마다 오르는 과밀 단계(승객 증가)
 let focusOn = false;          // 고른 노선만 진하게 보기
 let satDays;                  // 날마다의 평균 만족도(별 평가용)
@@ -366,7 +400,7 @@ const trackUsed = () => lines.filter(l => l.mode === 'sub').reduce((s, l) => s +
 const bridgesUsed = () => lines.filter(l => l.mode === 'bus').reduce((s, l) => s + lineCross(l), 0);
 const isLoop = l => l.stops.length > 3 && l.stops[0] === l.stops[l.stops.length - 1];
 const isVenue = s => s.d >= 0 && districts[s.d].type === 'V';
-const capOf = s => s.pier ? PIER_CAP : isVenue(s) ? VENUE_CAP : s.hub ? HUB_CAP : STOP_CAP;
+const capOf = s => (s.pier ? PIER_CAP : isVenue(s) ? VENUE_CAP : s.hub ? HUB_CAP : STOP_CAP) * (reviveT > 0 ? 2 : 1);
 
 function rnd() {   // mulberry32: 상태 rs 하나로 저장·복원할 수 있다
   rs = (rs + 0x6D2B79F5) | 0;
@@ -852,6 +886,7 @@ function step(dt) {
   clock += dt; now += dt;
   if (clock >= DAY) { clock = 0; offerReward(); return; }
   // 임시 증편이 끝나면 차량을 되돌린다
+  if (reviveT > 0) { reviveT -= dt; if (reviveT <= 0) { reviveT = 0; flash('부활 효과가 끝났습니다'); } }
   for (const l of lines) if (l.boost > 0) { l.boost -= dt; if (l.boost <= 0) { l.boost = 0; resetVehicles(l); rebuildD(); renderTools(); } }
   // 축제 도시: 행사가 끝나는 순간부터 관객이 몇 초에 걸쳐 쏟아져 나온다
   if (city.eventEnd) {
@@ -928,27 +963,30 @@ function offerReward() {
   if (!graded) { graded = true; lowDays = avg < FIRE_BELOW ? lowDays + 1 : 0; satDays.push(avg); }
   if (lowDays >= FIRE_DAYS) { over = true; gameOver('fired'); return; }
   const grade = avg >= GRADE_GOOD ? '우수' : avg >= GRADE_OK ? '보통' : '미흡';
-  const choices = avg >= GRADE_GOOD ? 4 : avg >= GRADE_OK ? 3 : 2;
+  const baseChoices = avg >= GRADE_GOOD ? 4 : avg >= GRADE_OK ? 3 : 2;
+  const choices = Math.min(4, baseChoices + (adUse.more ? 1 : 0));
   // 차량 하나와 (남아 있으면) 새 노선 하나는 반드시 넣고, 나머지는 개량·자원에서 고른다
   const must = [shuffle(vehicles, Math.random)[0]];
   if (expand.length) must.push(shuffle(expand, Math.random)[0]);
   const pool = shuffle(others.concat(expand.filter(o => !must.includes(o))), Math.random);
   rewardOpts = shuffle(must.concat(pool.slice(0, Math.max(0, choices - must.length))), Math.random);
   const done = day === GOAL_DAY && !cleared;
-  let doneMsg = '';
+  let doneMsg = rewardDoneMsg;
   if (done) {
     // 완주: 별을 매기고 진행 상황에 기록한다. 다음 도시가 열린다
     cleared = true;
     const mean = satDays.reduce((a, b) => a + b, 0) / Math.max(1, satDays.length);
-    const stars = 1 + (mean >= 70 ? 1 : 0) + (mean >= 85 ? 1 : 0);
+    // 별 3개는 부활 없이 완주해야 받는다
+    const stars = Math.min(adUse.revived ? 2 : 3, 1 + (mean >= 70 ? 1 : 0) + (mean >= 85 ? 1 : 0));
     const prog = readProg(), old = prog[city.id] || {};
     prog[city.id] = { cleared: true, stars: Math.max(stars, old.stars || 0), best: Math.max(delivered, old.best || 0) };
     writeProg(prog);
     const next = CITIES.find(c => c.needs === city.id && !c.soon);
     doneMsg = '평균 만족도 ' + Math.round(mean) + '% · ' + '★'.repeat(stars) + '☆'.repeat(3 - stars) + '. '
-      + (next && !old.cleared ? next.name + '가 열렸습니다! ' : '') + '여기부터는 무한 모드입니다. ';
+      + (adUse.revived ? '(부활 사용) ' : '') + (next && !old.cleared ? next.name + '가 열렸습니다! ' : '') + '여기부터는 무한 모드입니다. ';
+    rewardDoneMsg = doneMsg; rewardDoneTitle = true;
   }
-  $('rTitle').textContent = done ? GOAL_DAY + '일 완주!' : day + '일차 운영 종료';
+  $('rTitle').textContent = rewardDoneTitle ? GOAL_DAY + '일 완주!' : day + '일차 운영 종료';
   $('rGrade').className = 'grade ' + (choices === 4 ? 'good' : choices === 3 ? 'ok' : 'bad');
   $('rGrade').innerHTML = icon('smile', 18) + '<span>시민 만족도 <b>' + avg + '%</b> · ' + grade + '</span>';
   $('rSub').textContent = doneMsg
@@ -959,6 +997,12 @@ function offerReward() {
     $('r' + i).style.display = o ? '' : 'none';
     if (o) $('r' + i).innerHTML = '<div class="ric">' + icon(o.ic, 26) + '</div><b>' + o.title + '</b><span>' + o.desc + '</span>';
   }
+  // 광고 보상: 하루 한 번씩
+  $('adReroll').hidden = adUse.reroll;
+  $('adReroll').innerHTML = adLabel('지원 다시 뽑기');
+  $('adMore').hidden = adUse.more || baseChoices >= 4;
+  $('adMore').innerHTML = adLabel('지원 하나 더');
+  $('premR').innerHTML = premNudge();
   $('reward').classList.remove('hide');
   sfxDayEnd();
 }
@@ -966,6 +1010,7 @@ function takeReward(i) {
   rewardOpts[i].run();
   rebuildD();     // 속도 개량이 배차 간격과 경로 계산에 반영되게
   rewardOpts = null; day++; graded = false; dayS = { sum: 0, n: 0 }; boostLeft = 1;
+  adUse.reroll = false; adUse.more = false; rewardDoneMsg = ''; rewardDoneTitle = false;
   if (city.id === 'newtown') startSiteChoice();
   sfxReward(); saveGame();
   for (const col of ['#ffd166', '#ef476f', '#06d6a0', '#3a86ff']) fxBurst(W / 2 + Math.random() * 200 - 100, H / 2, col, 14, 160);
@@ -1124,7 +1169,7 @@ function saveGame(manual) {
     stops: stops.map(s => ({ x: s.x, y: s.y, d: s.d, pier: s.pier, side: s.side, hub: s.hub, over: s.over, acc: s.acc, wait: s.wait })),
     lines: lines.map(l => ({ unlocked: l.unlocked, extra: l.extra, boost: l.boost || 0, rides: l.rides || 0, stops: l.stops.map(s => s.idx),
       vehicles: l.vehicles.map(v => ({ i: v.i, j: v.j, t: v.t, dir: v.dir, dwell: v.dwell, load: v.load })) })),
-    sel: lines.indexOf(sel), reward: !!rewardOpts,
+    sel: lines.indexOf(sel), reward: !!rewardOpts, adUse, reviveT,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); if (manual) flash('저장했습니다'); }
   catch (e) { if (manual) flash('저장하지 못했습니다'); }
@@ -1160,6 +1205,7 @@ function loadGame() {
     applyCityUI();
     $('over').classList.add('hide'); $('reward').classList.add('hide');
     renderTools();
+    adUse = Object.assign({ revived: false, reroll: false, more: false }, data.adUse || {}); reviveT = data.reviveT || 0;
     if (data.reward) offerReward();    // 보상을 고르던 중에 저장된 경우
     return true;
   } catch (e) { console.error(e); newGame(); return false; }
@@ -1172,6 +1218,7 @@ function newGame(seed) {
   genMap(); genSlots(); stops = []; makeLines(); sched = []; schedDay = 0;
   track = city.track; spare = { bus: 1, sub: 0, ferry: 0, cable: 0, exp: 0 }; bridges = city.bridges; hubs = city.hubs || START_HUBS; day = 1; satDays = [];
   boostLeft = 1; burstLeft = 0; burstAcc = 0; siteChoice = null;
+  adUse = { revived: false, reroll: false, more: false }; reviveT = 0; rewardDoneMsg = ''; rewardDoneTitle = false;
   upg = { cap: {}, speed: {}, stops: 0 }; crowdLv = 0; focusOn = false;
   hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
   stopTimer = Infinity; rewardOpts = null; drawing = false; lastPhase = 'am'; bgDirty = true;
@@ -1231,6 +1278,10 @@ function gameOver(reason) {
   FX.shake = 1; FX.flash = 1; sfxOver(); clearSave(); buzz([90, 60, 180]);
   failStop = reason === 'fired' ? null : stops.reduce((m, s) => (!m || s.over > m.over ? s : m), null);
   $('oTips').innerHTML = reason === 'fired' ? firedTips() : failStop ? failTips(failStop) : '';
+  $('reviveBtn').hidden = reason === 'fired' || adUse.revived;
+  $('reviveBtn').innerHTML = adLabel('부활하기 · 30초 동안 정류장 정원 2배', true);
+  $('premO').innerHTML = premNudge();
+  if (!tutRun) { adStat.ends++; saveAdStat(); }
   $('reward').classList.add('hide');
   $('oTitle').textContent = reason === 'fired' ? '해임되었습니다' : '정류장 마비!';
   $('oWhy').textContent = reason === 'fired' ? '시민 만족도가 ' + FIRE_DAYS + '일 연속 ' + FIRE_BELOW + '% 미만이었습니다.' : '의 교통이 멈췄습니다.';
@@ -1506,15 +1557,96 @@ $('sTut').onclick = () => {
 let autoPaused = false;
 function appPause() {
   saveGame();
-  if (started && !over && speed !== 0) { setSpeed(0); autoPaused = true; }
+  if (started && !over && !rewardOpts && !Ads.showing && speed !== 0) { setSpeed(0); autoPaused = true; }
   if (AU.ctx && AU.ctx.state === 'running') AU.ctx.suspend();
 }
 function appResume() {
-  if (autoPaused) flash('일시정지했습니다 · ▶를 누르면 이어집니다');
+  if (autoPaused && !Ads.showing) flash('일시정지했습니다 · ▶를 누르면 이어집니다');
   // 소리는 다음 터치 때 audioInit이 다시 켠다(화면이 보일 때만)
   if (AU.ctx && AU.ctx.state === 'suspended' && !document.hidden) AU.ctx.resume();
 }
 window.appPause = appPause; window.appResume = appResume;
+
+// ---------- 광고 ----------
+// 앱(안드로이드)에서는 AndroidAds 다리로 AdMob 광고를 띄운다. 개발 빌드는 구글 테스트 광고 단위를 쓴다.
+// 웹(브라우저)에는 AdMob이 없으므로 광고 없이 바로 보상한다.
+const ADS_KEY = 'transit-ads', PREM_KEY = 'transit-premium';
+const INTER_EVERY = 3, INTER_GAP = 240000;   // 판이 3번 끝날 때마다, 최소 4분 간격
+const adStat = Object.assign({ ends: 0, last: 0, watched: 0 }, (() => { try { return JSON.parse(localStorage.getItem(ADS_KEY)) || {}; } catch (e) { return {}; } })());
+function saveAdStat() { try { localStorage.setItem(ADS_KEY, JSON.stringify(adStat)); } catch (e) {} }
+const isPremium = () => /[?&]premium=1/.test(location.search) || (() => { try { return localStorage.getItem(PREM_KEY) === '1'; } catch (e) { return false; } })();
+let tutRun = false;    // 튜토리얼로 시작한 판(판 사이 광고를 세지 않는다)
+const Ads = {
+  seq: 0, pending: {}, showing: false,
+  native: () => !!window.AndroidAds,
+  // 보상형: 끝까지 보면 cb(true)
+  rewarded(tag, cb) {
+    if (isPremium()) return cb(true);
+    if (!this.native()) { flash('웹 버전은 광고 없이 바로 지급합니다'); return cb(true); }
+    const id = tag + '_' + (++this.seq);
+    this.pending[id] = cb; this.showing = true;
+    try { window.AndroidAds.showRewarded(id); } catch (e) { this.result(id, false, 'error'); }
+  },
+  result(id, ok, why) {
+    const cb = this.pending[id];
+    delete this.pending[id]; this.showing = false;
+    if (ok) { adStat.watched++; saveAdStat(); }
+    else flash(why === 'notready' ? '광고를 불러오는 중입니다. 잠시 뒤 다시 눌러 주세요' : why === 'closed' ? '광고를 끝까지 보면 보상을 받습니다' : '광고를 보여 줄 수 없습니다');
+    if (cb) cb(!!ok);
+  },
+  // 판이 끝나고 다음 판으로 넘어갈 때만, 드물게
+  betweenGames() {
+    if (isPremium() || !this.native()) return;
+    if (adStat.ends < INTER_EVERY || adStat.ends % INTER_EVERY !== 0 || Date.now() - adStat.last < INTER_GAP) return;
+    adStat.last = Date.now(); saveAdStat();
+    this.showing = true;
+    try { window.AndroidAds.showInterstitial(); } catch (e) { this.showing = false; }
+  },
+};
+window.onAdResult = (id, ok, why) => Ads.result(id, ok, why);
+window.onAdClosed = () => { Ads.showing = false; };
+const adLabel = (text, big) => (isPremium() ? '' : '<span class="adtag">광고</span>') + '<span>' + text + '</span>';
+// 광고를 몇 번 본 사람에게만 한 줄로 프리미엄을 알린다
+const premNudge = () => !isPremium() && adStat.watched >= 3 ? '<button onclick="openPremium()">광고 없이 바로 받기 → 프리미엄</button>' : '';
+
+function revive() {
+  adUse.revived = true; over = false; failStop = null; reviveT = 30;
+  for (const s of stops) if (s.over > 0.3) s.over = 0;
+  $('over').classList.add('hide'); FX.flash = 0; FX.shake = 0;
+  for (const s of stops) if (s.wait.length > STOP_CAP) fxRing(s.x, s.y, '#2f8f5b', 44, 0.8, 4);
+  flash('부활! 30초 동안 정류장 정원이 두 배입니다'); sfxHub(); saveGame();
+}
+$('reviveBtn').onclick = () => { sfxClick(); Ads.rewarded('revive', ok => { if (ok && over) revive(); }); };
+$('adReroll').onclick = () => { sfxClick(); Ads.rewarded('reroll', ok => { if (ok && rewardOpts) { adUse.reroll = true; offerReward(); sfxReward(); } }); };
+$('adMore').onclick = () => { sfxClick(); Ads.rewarded('more', ok => { if (ok && rewardOpts) { adUse.more = true; offerReward(); sfxReward(); } }); };
+
+// ---------- 프리미엄 ----------
+// 결제는 스토어 출시 때 AndroidBilling 다리로 연결한다. 그 전에는 화면만 보여 준다
+function openPremium() {
+  sfxClick();
+  $('premState').textContent = isPremium() ? '이미 프리미엄을 쓰고 있습니다. 고맙습니다!' : '';
+  $('pBuy').style.display = isPremium() ? 'none' : '';
+  $('premium').classList.remove('hide');
+}
+function setPremium(on) {
+  try { on ? localStorage.setItem(PREM_KEY, '1') : localStorage.removeItem(PREM_KEY); } catch (e) {}
+  $('sPrem').textContent = isPremium() ? '프리미엄 사용 중' : '프리미엄 (광고 제거)';
+}
+window.onPurchase = (id, ok) => {
+  if (id === 'premium' && ok) { setPremium(true); flash('프리미엄을 시작합니다. 고맙습니다!'); sfxReward(); $('premium').classList.add('hide'); }
+  else if (!ok) flash('구매가 완료되지 않았습니다');
+};
+$('pBuy').onclick = () => {
+  if (window.AndroidBilling) { try { window.AndroidBilling.buy('premium'); } catch (e) { flash('결제를 열 수 없습니다'); } }
+  else $('premState').textContent = '결제는 스토어 출시 때 연결됩니다.';
+};
+$('pRestore').onclick = () => {
+  if (window.AndroidBilling) { try { window.AndroidBilling.restore(); } catch (e) {} }
+  else $('premState').textContent = '복원할 구매가 없습니다.';
+};
+$('pClose').onclick = () => { sfxClick(); $('premium').classList.add('hide'); };
+$('sPrem').onclick = openPremium;
+setPremium(isPremium());
 
 // ---------- 첫 판 튜토리얼 ----------
 const TUT_KEY = 'transit-tut';
@@ -1540,6 +1672,7 @@ function startTut() {
   if (!R || !others.length) return;
   for (const l of lines) { l.stops = []; l.vehicles = []; }
   rebuildD(); sel = lines[0]; setSpeed(1);
+  tutRun = true;
   tut = { i: -1, t: 0, a: R, b: others.sort((x, y) => dist(x, R) - dist(y, R))[0] };
   tutGo(0);
 }
@@ -1576,13 +1709,14 @@ $('cNext').onclick = () => { sfxClick(); tutGo(tut.i + 1); };
 const SEED_KEY = 'transit-lastseed';
 function lastSeeds() { try { return JSON.parse(localStorage.getItem(SEED_KEY)) || {}; } catch (e) { return {}; } }
 function beginGame() {
+  tutRun = false;
   clearSave(); $('start').classList.add('hide'); $('over').classList.add('hide'); started = true; audioInit(); sfxDayEnd();
   try { const m = lastSeeds(); m[city.id] = mapSeed; localStorage.setItem(SEED_KEY, JSON.stringify(m)); } catch (e) {}
   flash(city.name + ' · ' + city.tag + ' · 지도 #' + mapSeed);
 }
 $('startBtn').onclick = () => { beginGame(); if (!tutDone() && city.id === CITIES[0].id) startTut(); };
 $('sameBtn').onclick = () => { sfxClick(); newGame(lastSeeds()[city.id]); beginGame(); };
-$('retryBtn').onclick = () => { sfxClick(); clearSave(); newGame(mapSeed); beginGame(); };
+$('retryBtn').onclick = () => { sfxClick(); Ads.betweenGames(); clearSave(); newGame(mapSeed); beginGame(); };
 $('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
 $('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
 // 홈: 지금 판을 저장해 두고 도시 선택 화면으로 돌아간다
@@ -1603,7 +1737,7 @@ applySettings();
 $('muteBtn').innerHTML = icon('sound', 16);
 $('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').innerHTML = icon(AU.muted ? 'mute' : 'sound', 16); };
 addEventListener('pointerdown', audioInit, { passive: true });
-$('againBtn').onclick = () => { clearSave(); started = false; endTut(false); newGame(); showStart(); };
+$('againBtn').onclick = () => { Ads.betweenGames(); clearSave(); started = false; endTut(false); newGame(); showStart(); };
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
 $('r2').onclick = () => takeReward(2);

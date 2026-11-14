@@ -1,0 +1,70 @@
+plugins {
+    id 'com.android.application'
+}
+
+// 광고 ID
+// - 디버그 빌드: 항상 구글이 공개한 테스트 광고 단위를 쓴다(실제 광고를 눌러 계정이 정지되는 일을 막는다)
+// - 릴리스 빌드: android/admob.properties(깃에 올리지 않음)에 적은 실제 ID를 쓴다. 파일이 없으면 테스트 ID
+//   admob.properties 예시:
+//     ADMOB_APP_ID=ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy
+//     ADMOB_REWARDED=ca-app-pub-xxxxxxxxxxxxxxxx/zzzzzzzzzz
+//     ADMOB_INTERSTITIAL=ca-app-pub-xxxxxxxxxxxxxxxx/wwwwwwwwww
+def TEST_APP_ID = 'ca-app-pub-3940256099942544~3347511713'
+def TEST_REWARDED = 'ca-app-pub-3940256099942544/5224354917'
+def TEST_INTERSTITIAL = 'ca-app-pub-3940256099942544/1033173712'
+def admob = new Properties()
+def admobFile = rootProject.file('admob.properties')
+if (admobFile.exists()) admobFile.withInputStream { admob.load(it) }
+
+android {
+    namespace 'com.mangorocket.transit'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.mangorocket.transit'
+        minSdk 24
+        targetSdk 35
+        versionCode 3
+        versionName '0.3'
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders = [admobAppId: TEST_APP_ID]
+            buildConfigField 'String', 'AD_REWARDED', "\"${TEST_REWARDED}\""
+            buildConfigField 'String', 'AD_INTERSTITIAL', "\"${TEST_INTERSTITIAL}\""
+        }
+        release {
+            minifyEnabled false
+            manifestPlaceholders = [admobAppId: admob.getProperty('ADMOB_APP_ID', TEST_APP_ID)]
+            buildConfigField 'String', 'AD_REWARDED', "\"${admob.getProperty('ADMOB_REWARDED', TEST_REWARDED)}\""
+            buildConfigField 'String', 'AD_INTERSTITIAL', "\"${admob.getProperty('ADMOB_INTERSTITIAL', TEST_INTERSTITIAL)}\""
+        }
+    }
+
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets {
+        main { assets.srcDirs += [layout.buildDirectory.dir('gameAssets')] }
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-ads:25.5.0'
+    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'
+}
+
+// 웹 게임 파일을 앱 assets로 복사한다. 앱 안에서는 캐시 문제가 없으니 ?v= 표시는 뗀다
+def gameRoot = rootProject.file('..')
+tasks.register('copyGame', Copy) {
+    into layout.buildDirectory.dir('gameAssets')
+    from(gameRoot) {
+        include 'index.html'
+        filter { String line -> line.replaceAll(/\.js\?v=\d+/, '.js') }
+    }
+    from(gameRoot) { include 'audio.js', 'render.js', 'sprites/*.png' }
+}
+tasks.named('preBuild') { dependsOn 'copyGame' }
