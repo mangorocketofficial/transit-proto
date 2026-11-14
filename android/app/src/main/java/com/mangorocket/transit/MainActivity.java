@@ -38,6 +38,9 @@ public class MainActivity extends Activity {
     private RewardedAd rewarded;
     private InterstitialAd interstitial;
     private boolean loadingRewarded, loadingInterstitial;
+    // 광고를 띄운 동안에는 게임을 멈추되 웹뷰 타이머는 멈추지 않는다.
+    // pauseTimers()는 앱 안의 모든 웹뷰(광고 화면 포함)를 멈춰서 광고 닫기 버튼이 나오지 않게 된다
+    private boolean adShowing;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,13 +114,16 @@ public class MainActivity extends Activity {
         RewardedAd ad = rewarded;
         if (ad == null) { sendResult(id, false, "notready"); loadRewarded(); return; }
         rewarded = null;
+        adShowing = true;
         final boolean[] earned = { false };
         ad.setFullScreenContentCallback(new FullScreenContentCallback() {
             @Override public void onAdDismissedFullScreenContent() {
+                adShowing = false;
                 sendResult(id, earned[0], earned[0] ? "" : "closed");
                 loadRewarded();
             }
             @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) {
+                adShowing = false;
                 sendResult(id, false, "error");
                 loadRewarded();
             }
@@ -129,9 +135,10 @@ public class MainActivity extends Activity {
         InterstitialAd ad = interstitial;
         if (ad == null) { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); return; }
         interstitial = null;
+        adShowing = true;
         ad.setFullScreenContentCallback(new FullScreenContentCallback() {
-            @Override public void onAdDismissedFullScreenContent() { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
-            @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
+            @Override public void onAdDismissedFullScreenContent() { adShowing = false; js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
+            @Override public void onAdFailedToShowFullScreenContent(@NonNull AdError e) { adShowing = false; js("window.onAdClosed && onAdClosed()"); loadInterstitial(); }
         });
         ad.show(this);
     }
@@ -174,6 +181,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         web.evaluateJavascript("window.appPause && appPause()", null);   // 저장하고 멈춘 뒤 소리를 끈다
+        if (adShowing) return;                                            // 광고 화면 웹뷰까지 멈추지 않게
         web.onPause();
         web.pauseTimers();
     }
