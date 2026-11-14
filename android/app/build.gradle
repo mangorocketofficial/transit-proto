@@ -16,16 +16,32 @@ def admob = new Properties()
 def admobFile = rootProject.file('admob.properties')
 if (admobFile.exists()) admobFile.withInputStream { admob.load(it) }
 
+// 릴리스 서명: android/keystore.properties + upload-keystore.jks (둘 다 깃에 올리지 않음. 꼭 따로 백업할 것)
+def keyProps = new Properties()
+def keyFile = rootProject.file('keystore.properties')
+if (keyFile.exists()) keyFile.withInputStream { keyProps.load(it) }
+
 android {
     namespace 'com.mangorocket.transit'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.mangorocket.transit'
         minSdk 24
-        targetSdk 35
-        versionCode 3
-        versionName '0.3'
+        targetSdk 36
+        versionCode 10
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        release {
+            if (keyFile.exists()) {
+                storeFile rootProject.file(keyProps.getProperty('storeFile'))
+                storePassword keyProps.getProperty('storePassword')
+                keyAlias keyProps.getProperty('keyAlias')
+                keyPassword keyProps.getProperty('keyPassword')
+            }
+        }
     }
 
     buildTypes {
@@ -36,6 +52,7 @@ android {
         }
         release {
             minifyEnabled false
+            if (keyFile.exists()) signingConfig signingConfigs.release
             manifestPlaceholders = [admobAppId: admob.getProperty('ADMOB_APP_ID', TEST_APP_ID)]
             buildConfigField 'String', 'AD_REWARDED', "\"${admob.getProperty('ADMOB_REWARDED', TEST_REWARDED)}\""
             buildConfigField 'String', 'AD_INTERSTITIAL', "\"${admob.getProperty('ADMOB_INTERSTITIAL', TEST_INTERSTITIAL)}\""

@@ -1,6 +1,8 @@
 package com.mangorocket.transit;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -12,7 +14,10 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.os.Message;
 
 import androidx.annotation.NonNull;
 
@@ -57,7 +62,29 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
         s.setTextZoom(100);                              // 시스템 글자 크기 설정에 화면이 깨지지 않게
-        web.setWebViewClient(new WebViewClient());
+        s.setSupportMultipleWindows(true);               // window.open을 받아서 외부 브라우저로 넘긴다
+        web.setWebViewClient(new WebViewClient() {
+            // 게임 파일(file://) 밖의 주소는 웹뷰 안이 아니라 외부 브라우저로 연다
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                Uri u = r.getUrl();
+                if ("file".equals(u.getScheme())) return false;
+                openExternal(u);
+                return true;
+            }
+        });
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onCreateWindow(WebView v, boolean dialog, boolean user, Message msg) {
+                WebView tmp = new WebView(MainActivity.this);
+                tmp.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView w, WebResourceRequest r) {
+                        openExternal(r.getUrl()); w.destroy(); return true;
+                    }
+                });
+                ((WebView.WebViewTransport) msg.obj).setWebView(tmp);
+                msg.sendToTarget();
+                return true;
+            }
+        });
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setBackgroundColor(0xFFD5D9C2);
         web.addJavascriptInterface(new AdBridge(), "AndroidAds");
@@ -151,6 +178,12 @@ public class MainActivity extends Activity {
         js("window.onAdResult && onAdResult('" + id + "'," + ok + ",'" + why + "')");
     }
 
+    private void openExternal(Uri u) {
+        String sc = u.getScheme();
+        if (!"https".equals(sc) && !"http".equals(sc)) return;
+        try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
+    }
+
     private void js(String code) { main.post(() -> web.evaluateJavascript(code, null)); }
 
     // 게임(자바스크립트)에서 부르는 다리. 웹뷰 스레드에서 불리므로 화면 스레드로 넘긴다
@@ -161,6 +194,14 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void showInterstitial() { main.post(MainActivity.this::showInterstitial); }
         @JavascriptInterface public boolean isRewardedReady() { return rewarded != null; }
+        // 동의가 필요한 지역(유럽 등)이면 설정 화면에 '광고 개인정보 설정'을 보여 준다
+        @JavascriptInterface public boolean isPrivacyOptionsRequired() {
+            return consent != null && consent.getPrivacyOptionsRequirementStatus()
+                == ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED;
+        }
+        @JavascriptInterface public void showPrivacyOptions() {
+            main.post(() -> UserMessagingPlatform.showPrivacyOptionsForm(MainActivity.this, err -> {}));
+        }
     }
 
     // 진동. 웹뷰의 navigator.vibrate는 안드로이드가 '터치 진동'으로 분류해서,

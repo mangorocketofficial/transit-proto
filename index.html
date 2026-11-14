@@ -98,6 +98,8 @@ canvas { display: block; touch-action: none; }
 .premlink:empty { display: none; }
 .premlink button, .linkbtn { color: var(--blue); font-weight: 700; text-decoration: underline; font-size: 12px; }
 .linkbtn { display: block; margin: 6px auto 0; }
+.setlinks { display: flex; justify-content: center; gap: 16px; }
+.setlinks .linkbtn { margin: 10px 0 0; }
 .perks { margin: 10px 0; padding-left: 18px; line-height: 1.55; }
 .premstate { text-align: center; font-weight: 800; margin-bottom: 8px; color: var(--accent-d); }
 .premstate:empty { display: none; }
@@ -227,6 +229,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       </div>
       <button id="sPrem" class="btn blue" style="margin-bottom:8px"></button>
       <div class="btnrow"><button id="sClose" class="btn">닫기</button></div>
+      <div class="setlinks"><button id="sPrivacy" class="linkbtn">개인정보처리방침</button><button id="sAdPrivacy" class="linkbtn" style="display:none">광고 개인정보 설정</button></div>
     </div></div>
     <div id="premium" class="overlay hide"><div class="panel card" style="max-width:440px">
       <h2>프리미엄</h2>
@@ -305,7 +308,7 @@ const CITIES = [
     half: 0, tunnel: 0, bridges: 0, track: 550, start: { bus: 3, sub: 1, exp: 1 }, hubs: 2, busMax: 430 },
 ];
 const PROG_KEY = 'transit-progress';
-const TEST_ALL_OPEN = true;     // 시험 기간: 모든 도시를 열어 둔다. 출시 전에 false로 바꿀 것
+const TEST_ALL_OPEN = false;    // true면 모든 도시를 열어 둔다(시험용). 평소에는 주소에 ?unlock=1을 붙이면 된다
 const DEV_UNLOCK = TEST_ALL_OPEN || /[?&]unlock=1/.test(location.search);
 let city = CITIES[0];
 const BUS_COL = ['#3d3d3d', '#8d5524', '#c2185b', '#00838f', '#5e35b1'];
@@ -1538,7 +1541,7 @@ function buzz(pattern) {
   try { if (window.AndroidVib) AndroidVib.vibrate(String([].concat(pattern))); else if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
 }
 let settingsOpen = false;
-$('setBtn').onclick = () => { sfxClick(); settingsOpen = true; resetArmed = false; $('sReset').textContent = '진행 초기화'; $('settings').classList.remove('hide'); };
+$('setBtn').onclick = () => { sfxClick(); settingsOpen = true; resetArmed = false; $('sReset').textContent = '진행 초기화'; $('settings').classList.remove('hide'); refreshAdPrivacy(); };
 $('sClose').onclick = () => { sfxClick(); settingsOpen = false; $('settings').classList.add('hide'); };
 $('sBgm').oninput = () => { SET.bgm = +$('sBgm').value; applySettings(); };
 $('sSfx').oninput = () => { SET.sfx = +$('sSfx').value; applySettings(); };
@@ -1611,7 +1614,9 @@ window.onAdResult = (id, ok, why) => Ads.result(id, ok, why);
 window.onAdClosed = () => { Ads.showing = false; };
 const adLabel = (text, big) => (isPremium() ? '' : '<span class="adtag">광고</span>') + '<span>' + text + '</span>';
 // 광고를 몇 번 본 사람에게만 한 줄로 프리미엄을 알린다
-const premNudge = () => !isPremium() && adStat.watched >= 3 ? '<button onclick="openPremium()">광고 없이 바로 받기 → 프리미엄</button>' : '';
+// 결제(AndroidBilling)가 연결된 앱에서만 프리미엄 구매를 보여 준다. 연결 전 출시 버전에는 구매 버튼이 없다
+const canBuy = () => !!window.AndroidBilling;
+const premNudge = () => canBuy() && !isPremium() && adStat.watched >= 3 ? '<button onclick="openPremium()">광고 없이 바로 받기 → 프리미엄</button>' : '';
 
 function revive() {
   adUse.revived = true; over = false; failStop = null; reviveT = 30;
@@ -1625,7 +1630,7 @@ $('adReroll').onclick = () => { sfxClick(); Ads.rewarded('reroll', ok => { if (o
 $('adMore').onclick = () => { sfxClick(); Ads.rewarded('more', ok => { if (ok && rewardOpts) { adUse.more = true; offerReward(); sfxReward(); } }); };
 
 // ---------- 프리미엄 ----------
-// 결제는 스토어 출시 때 AndroidBilling 다리로 연결한다. 그 전에는 화면만 보여 준다
+// 결제는 AndroidBilling 다리로 연결한다(아직 없음). 연결 전에는 설정의 프리미엄 버튼도 숨긴다
 function openPremium() {
   sfxClick();
   $('premState').textContent = isPremium() ? '이미 프리미엄을 쓰고 있습니다. 고맙습니다!' : '';
@@ -1635,6 +1640,7 @@ function openPremium() {
 function setPremium(on) {
   try { on ? localStorage.setItem(PREM_KEY, '1') : localStorage.removeItem(PREM_KEY); } catch (e) {}
   $('sPrem').textContent = isPremium() ? '프리미엄 사용 중' : '프리미엄 (광고 제거)';
+  $('sPrem').style.display = canBuy() || isPremium() ? '' : 'none';
 }
 window.onPurchase = (id, ok) => {
   if (id === 'premium' && ok) { setPremium(true); flash('프리미엄을 시작합니다. 고맙습니다!'); sfxReward(); $('premium').classList.add('hide'); }
@@ -1650,6 +1656,17 @@ $('pRestore').onclick = () => {
 };
 $('pClose').onclick = () => { sfxClick(); $('premium').classList.add('hide'); };
 $('sPrem').onclick = openPremium;
+
+// ---------- 개인정보 ----------
+// 앱에서는 링크를 외부 브라우저로 연다(MainActivity). 광고 개인정보 설정은 동의가 필요한 지역(유럽 등)에서만 보인다
+const PRIVACY_URL = 'https://mangorocketofficial.github.io/transit-proto/privacy.html';
+$('sPrivacy').onclick = () => { sfxClick(); window.open(PRIVACY_URL, '_blank'); };
+$('sAdPrivacy').onclick = () => { sfxClick(); try { window.AndroidAds.showPrivacyOptions(); } catch (e) {} };
+function refreshAdPrivacy() {
+  let need = false;
+  try { need = !!(window.AndroidAds && window.AndroidAds.isPrivacyOptionsRequired()); } catch (e) {}
+  $('sAdPrivacy').style.display = need ? '' : 'none';
+}
 setPremium(isPremium());
 
 // ---------- 첫 판 튜토리얼 ----------

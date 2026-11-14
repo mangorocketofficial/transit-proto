@@ -3,3 +3,6 @@ android/.gradle/
 android/app/build/
 android/local.properties
 android/admob.properties
+android/upload-keystore.jks
+android/keystore.properties
+*.jks
