@@ -79,6 +79,8 @@ canvas { display: block; touch-action: none; }
   background: var(--accent); color: #fff; font-size: 15px; font-weight: 800; box-shadow: 0 3px 0 var(--accent-d); }
 .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-d); }
 .btn.blue { background: var(--blue); box-shadow: 0 3px 0 var(--blue-d); }
+.btn.ghost { background: #fff; color: var(--accent-d); box-shadow: 0 3px 0 var(--accent-d); border: 2px solid var(--accent); }
+.seed { font-size: 11px; font-weight: 700; color: #8a8270; }
 .btnrow { display: flex; gap: 8px; position: sticky; bottom: 0; padding-top: 6px; background: linear-gradient(transparent, var(--paper) 30%); }
 .rewards { display: flex; gap: 8px; margin-top: 10px; }
 .rewards button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; border-radius: 13px; text-align: center;
@@ -154,6 +156,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       <details><summary>게임 방법</summary><div id="howto"></div></details>
       <div class="btnrow">
         <button id="contBtn" class="btn blue" style="display:none"></button>
+        <button id="sameBtn" class="btn ghost" style="display:none"></button>
         <button id="startBtn" class="btn">부임하기</button>
       </div>
     </div></div>
@@ -172,12 +175,12 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
         <div><b id="oPop"></b>인구</div>
       </div>
       <p id="oBest" style="margin:0 0 8px;text-align:center;font-weight:700"></p>
-      <button id="againBtn" class="btn">새 도시에서 다시</button>
+      <div class="btnrow"><button id="retryBtn" class="btn blue">같은 지도로 다시</button><button id="againBtn" class="btn">새 지도로</button></div>
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=12"></script>
-<script src="render.js?v=12"></script>
+<script src="audio.js?v=13"></script>
+<script src="render.js?v=13"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -247,7 +250,11 @@ const TYPE_NAME = { R: '주거', O: '업무', C: '상업', V: '경기장' };
 const DCOL = { R: ['#2e9e48', '#8aa80f', '#12a58a'], O: ['#2f6fe0', '#8a52e0'], C: ['#e57f17'], V: ['#d6336c'] };
 const STOP_CAP = 8;             // 이보다 많이 기다리면 마비 고리가 찬다
 const OVER_SEC = 30;
-const STOP_INTERVAL = 22;       // 새 정류장이 생기는 간격(초)
+// 정류장 성장: 날마다 '그날 끝 누적 정류장 수'의 범위만 정해 두고, 그 안에서 무작위로 고른다
+// 1~5일 끝의 범위. 6일째 끝에는 모든 자리(구역마다 4곳)가 찬다. 7일째부터는 하루 4번 도시가 붐빈다(승객 +8%씩)
+const GROW = [[7, 9], [11, 13], [15, 17], [18, 21], [21, 23]];
+const GROW_FULL_DAY = 6;
+const CROWD_PER_DAY = 4;
 const MAX_STOPS_PER_DISTRICT = 4;
 const MAX_LINE_STOPS = 8;
 const BASE_RATE = 0.10;         // 정류장 하나가 초당 만드는 승객(시간대 가중 전)
@@ -269,6 +276,8 @@ let districts, stops, lines, sel, track, spare, day, clock, delivered, over, sto
 let hubs, hubMode, now, pendingStop, cleared;
 let mountain, boostLeft, burstLeft, burstAcc, siteChoice;   // 산(산악), 임시 증편·행사(축제), 개발 후보(신도시)
 let upg = { cap: {}, speed: {}, stops: 0 };   // 시의회 지원으로 받은 개량
+let mapSeed = 0, rs = 0;       // 지도 번호와 지도·성장용 난수 상태(같은 번호면 같은 지도, 같은 성장)
+let sched = [], schedDay = 0;  // 오늘 정류장이 생길(또는 붐빌) 시각 목록
 let crowdLv = 0;              // 정류장이 더 생길 자리가 없을 때마다 오르는 과밀 단계(승객 증가)
 let focusOn = false;          // 고른 노선만 진하게 보기
 let satDays;                  // 날마다의 평균 만족도(별 평가용)
@@ -313,7 +322,13 @@ const isLoop = l => l.stops.length > 3 && l.stops[0] === l.stops[l.stops.length 
 const isVenue = s => s.d >= 0 && districts[s.d].type === 'V';
 const capOf = s => s.pier ? PIER_CAP : isVenue(s) ? VENUE_CAP : s.hub ? HUB_CAP : STOP_CAP;
 
-function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function rnd() {   // mulberry32: 상태 rs 하나로 저장·복원할 수 있다
+  rs = (rs + 0x6D2B79F5) | 0;
+  let x = Math.imul(rs ^ (rs >>> 15), 1 | rs);
+  x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+  return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+}
+function shuffle(a, r = rnd) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 // ---------- 지도 ----------
 // 항구 도시: 가운데 넓은 만을 사이에 두고 양쪽에 구역이 셋씩
@@ -325,9 +340,9 @@ function genHarbor() {
   const pos = [[112, 108], [112, 312], [270, 210], [788, 108], [788, 312], [630, 210]];
   districts = pos.map(([x, y], i) => ({
     id: i, type: types[i], color: DCOL[types[i]][used[types[i]]++], sat: SAT_START,
-    x: x + (Math.random() * 12 - 6), y: y + (Math.random() * 16 - 8), r: 74 + Math.random() * 5,
+    x: x + (rnd() * 12 - 6), y: y + (rnd() * 16 - 8), r: 74 + rnd() * 5,
   }));
-  const ph = Math.random() * 6;
+  const ph = rnd() * 6;
   river = [];
   for (let y = -20; y <= H + 20; y += 40) river.push({ x: 450 + Math.sin(y / 90 + ph) * 11, y });
 }
@@ -354,7 +369,7 @@ function genMountain() {
   const pos = [[140, 104, 78], [140, 316, 78], [450, 66, 56], [450, 354, 56], [760, 104, 78], [760, 316, 78]];
   districts = pos.map(([x, y, r], i) => ({
     id: i, type: types[i], color: DCOL[types[i]][used[types[i]]++], sat: SAT_START,
-    x: x + (Math.random() * 14 - 7), y: y + (Math.random() * 8 - 4), r: r + Math.random() * 4,
+    x: x + (rnd() * 14 - 7), y: y + (rnd() * 8 - 4), r: r + rnd() * 4,
   }));
   river = [];
   mountain = { x: 450, y: 210, rx: 118, ry: 62 };
@@ -368,7 +383,7 @@ function genMetro() {
   const pos = [[100, 104], [100, 316], [236, 210], [800, 104], [800, 316], [664, 210]];
   districts = pos.map(([x, y], i) => ({
     id: i, type: types[i], color: DCOL[types[i]][used[types[i]]++], sat: SAT_START,
-    x: x + (Math.random() * 10 - 5), y: y + (Math.random() * 14 - 7), r: 72 + Math.random() * 5,
+    x: x + (rnd() * 10 - 5), y: y + (rnd() * 14 - 7), r: 72 + rnd() * 5,
   }));
   river = [];
 }
@@ -395,25 +410,37 @@ function genGrid(typeList) {
     const type = types[r * 3 + c];
     districts.push({
       id: districts.length, type, color: DCOL[type][used[type]++], sat: SAT_START,
-      x: 150 + 300 * c + (Math.random() * 60 - 30), y: 105 + 210 * r + (Math.random() * 30 - 15),
-      r: 80 + Math.random() * 10,
+      x: 150 + 300 * c + (rnd() * 60 - 30), y: 105 + 210 * r + (rnd() * 30 - 15),
+      r: 80 + rnd() * 10,
     });
   }
   // 강: 구역 열 사이를 위에서 아래로 흐른다
-  const base = Math.random() < 0.5 ? 300 : 600, ph = Math.random() * 6;
+  const base = rnd() < 0.5 ? 300 : 600, ph = rnd() * 6;
   river = [];
   for (let y = -20; y <= H + 20; y += 40) river.push({ x: base + Math.sin(y / 70 + ph) * 9, y });
 }
 
-function pickStopPos(d) {
-  for (let i = 0; i < 200; i++) {
-    const a = Math.random() * Math.PI * 2, rr = Math.random() * (d.r - 24);
-    const p = { x: d.x + Math.cos(a) * rr, y: d.y + Math.sin(a) * rr };
-    if (p.y < 26 || p.y > H - 26 || p.x < 26 || p.x > W - 40) continue;
-    if (stops.every(s => dist(s, p) > 48)) return p;
+// 지도를 만들 때 구역마다 정류장 자리 4곳을 서로 떨어지게 미리 정해 둔다(어느 판이든 최대치가 같다)
+function genSlots() {
+  const all = [];
+  for (const d of districts) {
+    let best = [];
+    for (let tries = 0; tries < 60 && best.length < MAX_STOPS_PER_DISTRICT; tries++) {
+      const minD = Math.max(38, 50 - 3 * Math.floor(tries / 10));
+      const got = [];
+      for (let i = 0; i < 300 && got.length < MAX_STOPS_PER_DISTRICT; i++) {
+        const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * (d.r - 20);
+        const q = { x: d.x + Math.cos(a) * rr, y: d.y + Math.sin(a) * rr };
+        if (q.y < 26 || q.y > H - 26 || q.x < 26 || q.x > W - 40) continue;
+        if (all.every(s => dist(s, q) > minD) && got.every(s => dist(s, q) > minD)) got.push(q);
+      }
+      if (got.length > best.length) best = got;
+    }
+    d.slots = best.map(q => ({ x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10, used: false }));
+    all.push(...best);
   }
-  return null;
 }
+const freeSlots = d => d.slots.filter(s => !s.used);
 
 function createStop(p, d) {
   const s = { idx: stops.length, x: p.x, y: p.y, d: d.id, wait: [], over: 0, acc: Math.random(), hub: false, born: performance.now() / 1000 };
@@ -422,31 +449,47 @@ function createStop(p, d) {
   rebuildD();
   return s;
 }
-
-function addStop(d) { const p = pickStopPos(d); return p ? createStop(p, d) : null; }
-
-// 다음 정류장 자리를 미리 정한다(예고용). 정류장이 적은 구역부터 채운다
-function planStop() {
-  const count = d => stops.filter(s => s.d === d.id).length;
-  const open = shuffle(districts.filter(d => d.built !== false && !d.full && count(d) < MAX_STOPS_PER_DISTRICT));
-  open.sort((a, b) => count(a) - count(b));
-  // 정류장이 적은 구역부터 자리를 찾고, 자리가 없는 구역은 '가득 참'으로 표시해 다음부터 건너뛴다
-  for (const d of open) {
-    const p = pickStopPos(d);
-    if (p) { pendingStop = { x: p.x, y: p.y, d }; return; }
-    d.full = true;
-  }
+// 구역의 빈 자리 하나에 정류장을 세운다
+function addStop(d) {
+  const free = freeSlots(d);
+  if (!free.length) return null;
+  const slot = free[Math.floor(rnd() * free.length)];
+  slot.used = true;
+  return createStop(slot, d);
 }
 
+// 다음 정류장 자리를 미리 정한다(예고용). 정류장이 가장 적은 구역 가운데 하나의 빈 자리
+function planStop() {
+  pendingStop = null;
+  const open = districts.filter(d => d.built !== false && freeSlots(d).length);
+  if (!open.length) return;
+  const most = Math.max(...open.map(d => freeSlots(d).length));
+  const cand = open.filter(d => freeSlots(d).length === most);
+  const d = cand[Math.floor(rnd() * cand.length)], free = freeSlots(d);
+  const k = d.slots.indexOf(free[Math.floor(rnd() * free.length)]);
+  pendingStop = { x: d.slots[k].x, y: d.slots[k].y, d, k };
+}
 function spawnStop() {
   if (!pendingStop) planStop();
-  if (pendingStop) { createStop(pendingStop, pendingStop.d); flash('새 정류장이 생겼습니다'); }
-  else if (districts.some(d => d.built !== false)) {
-    // 더 지을 자리가 없으면 대신 도시가 붐빈다: 승객이 8%씩 늘어난다
-    crowdLv++; flash('도시가 더 붐빕니다 · 승객 +8%'); sfxWarn();
+  if (pendingStop) {
+    pendingStop.d.slots[pendingStop.k].used = true;
+    createStop(pendingStop, pendingStop.d); flash('새 정류장이 생겼습니다');
   }
   pendingStop = null;
 }
+// 하루가 시작될 때 오늘의 정류장 수를 범위 안에서 정하고, 그만큼을 하루에 고르게 흩어 놓는다
+function makeSchedule() {
+  schedDay = day; sched = [];
+  const have = stops.filter(s => s.d >= 0).length;
+  const free = districts.filter(d => d.built !== false).reduce((n, d) => n + freeSlots(d).length, 0);
+  const allFree = districts.reduce((n, d) => n + freeSlots(d).length, 0);
+  let n, crowd = false;
+  if (!allFree) { n = CROWD_PER_DAY; crowd = true; }
+  else if (day >= GROW_FULL_DAY) n = free;
+  else { const [lo, hi] = GROW[day - 1]; n = Math.max(0, Math.min(free, lo + Math.floor(rnd() * (hi - lo + 1)) - have)); }
+  for (let i = 0; i < n; i++) sched.push({ t: Math.max(FORECAST * 0.5, DAY * (i + 0.15 + 0.7 * rnd()) / n), crowd });
+}
+function crowdUp() { crowdLv++; flash('도시가 더 붐빕니다 · 승객 +8%'); sfxWarn(); }
 
 // ---------- 노선 ----------
 function makeLines() {
@@ -714,9 +757,11 @@ function step(dt) {
       }
     }
   }
-  stopTimer -= dt;
-  if (stopTimer <= FORECAST && pendingStop === null) { planStop(); if (!pendingStop) pendingStop = false; }
-  if (stopTimer <= 0) { spawnStop(); stopTimer = STOP_INTERVAL; }
+  if (schedDay !== day) makeSchedule();
+  const nx = sched[0];
+  stopTimer = nx ? nx.t - clock : Infinity;
+  if (nx && !nx.crowd && stopTimer <= FORECAST && !pendingStop) planStop();
+  if (nx && clock >= nx.t) { sched.shift(); if (nx.crowd) crowdUp(); else spawnStop(); }
   const ph = phase(), rate = BASE_RATE * (1 + (day - 1) * DAY_GROWTH) * (1 + 0.08 * crowdLv);
   for (const s of stops) {
     if (!s.pier) s.acc += rate * (GEN[ph][districts[s.d].type] || 0) * dt;
@@ -771,10 +816,10 @@ function offerReward() {
   const grade = avg >= GRADE_GOOD ? '우수' : avg >= GRADE_OK ? '보통' : '미흡';
   const choices = avg >= GRADE_GOOD ? 4 : avg >= GRADE_OK ? 3 : 2;
   // 차량 하나와 (남아 있으면) 새 노선 하나는 반드시 넣고, 나머지는 개량·자원에서 고른다
-  const must = [shuffle(vehicles)[0]];
-  if (expand.length) must.push(shuffle(expand)[0]);
-  const pool = shuffle(others.concat(expand.filter(o => !must.includes(o))));
-  rewardOpts = shuffle(must.concat(pool.slice(0, Math.max(0, choices - must.length))));
+  const must = [shuffle(vehicles, Math.random)[0]];
+  if (expand.length) must.push(shuffle(expand, Math.random)[0]);
+  const pool = shuffle(others.concat(expand.filter(o => !must.includes(o))), Math.random);
+  rewardOpts = shuffle(must.concat(pool.slice(0, Math.max(0, choices - must.length))), Math.random);
   const done = day === GOAL_DAY && !cleared;
   let doneMsg = '';
   if (done) {
@@ -880,6 +925,8 @@ const HOWTO_COMMON = [
   '<b>환승</b>에는 2초가 걸리고, 승객은 배차 간격까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.',
   '<b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다. 다시 누르면 해제됩니다.',
   '아침에는 주거 → 업무, 저녁에는 업무·상업 → 주거로 몰립니다. 새 정류장 자리는 미리 점선으로 보입니다.',
+  '<b>정류장</b>은 6일째까지 날마다 몇 곳씩 늘어 모든 구역에 4곳씩 찹니다. 그 뒤로는 하루 네 번 도시가 붐벼 승객이 8%씩 늘어납니다.',
+  '<b>지도 번호</b>: 끝난 뒤 \'같은 지도로 다시\'를 누르면 같은 지형, 같은 정류장 자리, 같은 성장 순서로 다시 할 수 있습니다.',
   '<b>시민 만족도</b>: 승객이 빨리, 덜 갈아타고 도착할수록 올라갑니다. 하루 평균이 높으면 지원 선택지가 늘고(80% 이상 4개, 55% 미만 2개), 이틀 연속 40% 미만이면 해임됩니다.',
   '하루가 끝나면 시의회 지원 중 하나를 고릅니다. 8일을 넘기면 완주입니다.',
   '정류장에 정원보다 많이 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.',
@@ -942,7 +989,10 @@ function renderCities() {
     };
     box.appendChild(b);
   }
-  $('cityInfo').innerHTML = '<b>' + city.name + ' · ' + cityName + '</b><br>' + city.desc;
+  $('cityInfo').innerHTML = '<b>' + city.name + ' · ' + cityName + '</b> <span class="seed">지도 #' + mapSeed + '</span><br>' + city.desc;
+  const ls = lastSeeds()[city.id];
+  $('sameBtn').style.display = ls && ls !== mapSeed ? '' : 'none';
+  if (ls) $('sameBtn').textContent = '지난 지도 다시 · #' + ls;
   renderHowto();
 }
 function flashCity(text) { $('cityInfo').textContent = text; }
@@ -952,8 +1002,8 @@ const SAVE_KEY = 'transit-proto-save';
 function saveGame(manual) {
   if (!started || over) return;
   const data = {
-    v: 5, upg, crowdLv, mountain, boostLeft, burstLeft, siteChoice, cityId: city.id, satDays, city: cityName, dayS, lowDays, graded, districts, river, track, spare, bridges, hubs, day, clock, delivered, stopTimer, cleared, now,
-    pendingStop: pendingStop ? { x: pendingStop.x, y: pendingStop.y, d: pendingStop.d.id } : null,
+    v: 6, mapSeed, rs, sched, schedDay, upg, crowdLv, mountain, boostLeft, burstLeft, siteChoice, cityId: city.id, satDays, city: cityName, dayS, lowDays, graded, districts, river, track, spare, bridges, hubs, day, clock, delivered, stopTimer, cleared, now,
+    pendingStop: pendingStop ? { x: pendingStop.x, y: pendingStop.y, d: pendingStop.d.id, k: pendingStop.k } : null,
     stops: stops.map(s => ({ x: s.x, y: s.y, d: s.d, pier: s.pier, side: s.side, hub: s.hub, over: s.over, acc: s.acc, wait: s.wait })),
     lines: lines.map(l => ({ unlocked: l.unlocked, extra: l.extra, boost: l.boost || 0, rides: l.rides || 0, stops: l.stops.map(s => s.idx),
       vehicles: l.vehicles.map(v => ({ i: v.i, j: v.j, t: v.t, dir: v.dir, dwell: v.dwell, load: v.load })) })),
@@ -962,7 +1012,7 @@ function saveGame(manual) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); if (manual) flash('저장했습니다'); }
   catch (e) { if (manual) flash('저장하지 못했습니다'); }
 }
-function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 5 ? d : null; } catch (e) { return null; } }
+function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 6 ? d : null; } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 
 function loadGame() {
@@ -971,6 +1021,7 @@ function loadGame() {
   try {
     city = CITIES.find(c => c.id === data.cityId) || CITIES[0]; satDays = data.satDays || [];
     upg = data.upg || { cap: {}, speed: {}, stops: 0 }; crowdLv = data.crowdLv || 0;
+    mapSeed = data.mapSeed; rs = data.rs; sched = data.sched || []; schedDay = data.schedDay || 0;
     mountain = data.mountain || null; boostLeft = data.boostLeft == null ? 1 : data.boostLeft; burstLeft = data.burstLeft || 0; burstAcc = 0; siteChoice = data.siteChoice || null;
     districts = data.districts; river = data.river; cityName = data.city || cityName;
     track = data.track; spare = data.spare; bridges = data.bridges; hubs = data.hubs; day = data.day; clock = data.clock;
@@ -983,7 +1034,7 @@ function loadGame() {
       l.unlocked = d.unlocked; l.extra = d.extra; l.boost = d.boost || 0; l.rides = d.rides || 0; l.stops = d.stops.map(k => stops[k]);
       l.vehicles = d.vehicles.map(v => ({ i: v.i, j: v.j, t: v.t, dir: v.dir, dwell: v.dwell, load: v.load }));
     });
-    pendingStop = data.pendingStop ? { x: data.pendingStop.x, y: data.pendingStop.y, d: districts[data.pendingStop.d] } : null;
+    pendingStop = data.pendingStop ? { x: data.pendingStop.x, y: data.pendingStop.y, d: districts[data.pendingStop.d], k: data.pendingStop.k } : null;
     over = false; hubMode = false; drawing = false; rewardOpts = null; lastPhase = phase(); bgDirty = true;
     rebuildD();
     dayS = data.dayS || { sum: 0, n: 0 }; lowDays = data.lowDays || 0; graded = !!data.graded;
@@ -997,14 +1048,16 @@ function loadGame() {
   } catch (e) { console.error(e); newGame(); return false; }
 }
 
-function newGame() {
-  cityName = CITY_NAMES[Math.floor(Math.random() * CITY_NAMES.length)] + '시';
-  genMap(); stops = []; makeLines();
+function newGame(seed) {
+  mapSeed = seed == null ? 1 + Math.floor(Math.random() * 99999) : seed;
+  rs = mapSeed * 7919 + CITIES.indexOf(city) * 104729;   // 같은 번호라도 도시마다 다른 지도
+  cityName = CITY_NAMES[Math.floor(rnd() * CITY_NAMES.length)] + '시';
+  genMap(); genSlots(); stops = []; makeLines(); sched = []; schedDay = 0;
   track = city.track; spare = { bus: 1, sub: 0, ferry: 0, cable: 0, exp: 0 }; bridges = city.bridges; hubs = city.hubs || START_HUBS; day = 1; satDays = [];
   boostLeft = 1; burstLeft = 0; burstAcc = 0; siteChoice = null;
   upg = { cap: {}, speed: {}, stops: 0 }; crowdLv = 0; focusOn = false;
   hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
-  stopTimer = STOP_INTERVAL; rewardOpts = null; drawing = false; lastPhase = 'am'; bgDirty = true;
+  stopTimer = Infinity; rewardOpts = null; drawing = false; lastPhase = 'am'; bgDirty = true;
   dayS = { sum: 0, n: 0 }; lowDays = 0; graded = false; FX.flash = 0; FX.shake = 0; FX.parts = []; FX.rings = []; FX.floats = [];
   rebuildD();
   // 주거 2곳, 업무 1곳, 상업 1곳에 정류장 하나씩
@@ -1195,7 +1248,17 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
   speed = +b.dataset.speed;
   document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
 });
-$('startBtn').onclick = () => { clearSave(); $('start').classList.add('hide'); started = true; audioInit(); sfxDayEnd(); flash(city.name + ' · ' + city.tag); };
+// 지난번에 도시마다 어떤 지도로 했는지 기억해 둔다(같은 지도로 다시 하기)
+const SEED_KEY = 'transit-lastseed';
+function lastSeeds() { try { return JSON.parse(localStorage.getItem(SEED_KEY)) || {}; } catch (e) { return {}; } }
+function beginGame() {
+  clearSave(); $('start').classList.add('hide'); $('over').classList.add('hide'); started = true; audioInit(); sfxDayEnd();
+  try { const m = lastSeeds(); m[city.id] = mapSeed; localStorage.setItem(SEED_KEY, JSON.stringify(m)); } catch (e) {}
+  flash(city.name + ' · ' + city.tag + ' · 지도 #' + mapSeed);
+}
+$('startBtn').onclick = beginGame;
+$('sameBtn').onclick = () => { sfxClick(); newGame(lastSeeds()[city.id]); beginGame(); };
+$('retryBtn').onclick = () => { sfxClick(); clearSave(); newGame(mapSeed); beginGame(); };
 $('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
 $('saveBtn').onclick = () => { saveGame(true); sfxClick(); };
 // 홈: 지금 판을 저장해 두고 도시 선택 화면으로 돌아간다
