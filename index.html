@@ -65,6 +65,10 @@ button.line.on { background: #fff; box-shadow: 0 0 0 2px var(--c), 0 2px 5px rgb
 #wrap { flex: 1; position: relative; min-width: 0; border-radius: 14px; overflow: hidden;
   border: 3px solid #c9bf9f; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 3px 0 rgba(120,105,70,0.25), 0 6px 14px rgba(60,50,30,0.14); background: #d5d9c2; }
 canvas { display: block; touch-action: none; }
+.pop { position: absolute; z-index: 5; }
+.pop.hide { display: none; }
+.pop button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 10px; background: #fff; color: #c0392b;
+  font-size: 13px; font-weight: 800; border: 2px solid var(--c, #c0392b); box-shadow: 0 3px 0 rgba(0,0,0,0.18); white-space: nowrap; }
 
 /* ---------- 덮는 화면 ---------- */
 .overlay { position: absolute; inset: 0; background: rgba(46,52,40,0.50); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
@@ -148,6 +152,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
   <div id="tools"></div>
   <div id="wrap">
     <canvas id="cv"></canvas>
+    <div id="stopPop" class="pop hide"><button id="popDel"></button></div>
     <div id="start" class="overlay"><div class="panel card" style="max-width:660px">
       <h2>노선 짜기</h2>
       <div class="sub">도시를 골라 교통국장으로 부임하세요. 8일을 버티면 완주이고 다음 도시가 열립니다.</div>
@@ -179,8 +184,8 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=13"></script>
-<script src="render.js?v=13"></script>
+<script src="audio.js?v=14"></script>
+<script src="render.js?v=14"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -512,39 +517,104 @@ function resetVehicles(l) {
   for (let k = 0; k < count; k++) l.vehicles.push({ i: Math.floor(k * n / count) % n, j: null, t: 0, dir: 1, dwell: 0, load: [] });
 }
 
-// 노선 끝에 정류장을 붙인다. 안 되면 이유를 돌려준다
-function appendError(l, s) {
-  const n = l.stops.length;
-  if (n && isLoop(l)) return 'same';     // 이미 닫힌 고리: 끌기 중에는 조용히 무시
-  if (n && l.stops[n - 1] === s) return 'same';
-  const closing = n >= 3 && l.stops[0] === s;
-  if (l.stops.includes(s) && !closing) return 'same';
+// 노선 하나의 정류장 목록이 규칙에 맞는지 본다. 바꾸려는 목록 전체를 검사하므로 연장·끼워 넣기·빼기에 모두 쓴다
+const candLoop = c => c.length > 3 && c[0] === c[c.length - 1];
+const candSegs = c => c.slice(1).map((s, i) => [c[i], s]);
+function lineError(l, cand) {
+  const loop = candLoop(cand), uniq = cand.length - (loop ? 1 : 0);
+  if (new Set(cand).size !== uniq) return 'same';
   const maxStops = maxStopsOf(l.mode);
-  if (n >= maxStops + (closing ? 1 : 0)) return MODES[l.mode].name + ' 노선은 정류장 ' + maxStops + '곳까지입니다';
-  if (l.mode === 'exp' && !s.hub) return '급행은 환승 센터에만 섭니다';
-  if (l.mode === 'bus' && n && crossesMountain(l.stops[n - 1], s)) return '버스는 산을 넘지 못합니다. 돌아가세요';
-  if (l.mode === 'bus' && n && city.busMax && lineLength(l) + dist(l.stops[n - 1], s) > city.busMax) return '시내버스 노선은 길이 ' + city.busMax + '을 넘을 수 없습니다';
-  if (l.mode === 'sub' && n && trackUsed() + segTrack(l.stops[n - 1], s) > track) {
-    return crossings(l.stops[n - 1], s) || crossesMountain(l.stops[n - 1], s) ? '선로가 모자랍니다 (터널은 +' + city.tunnel + ')' : '선로가 모자랍니다';
+  if (uniq > maxStops) return MODES[l.mode].name + ' 노선은 정류장 ' + maxStops + '곳까지입니다';
+  if (l.mode === 'exp' && cand.some(s => !s.hub)) return '급행은 환승 센터에만 섭니다';
+  if (l.mode === 'ferry' && cand.some(s => !s.pier)) return '여객선은 선착장끼리만 잇습니다';
+  const segs = candSegs(cand);
+  if (l.mode === 'bus') {
+    if (segs.some(([x, y]) => crossesMountain(x, y))) return '버스는 산을 넘지 못합니다. 돌아가세요';
+    if (city.busMax && segs.reduce((n, [x, y]) => n + dist(x, y), 0) > city.busMax + 1e-6) return '시내버스 노선은 길이 ' + city.busMax + '을 넘을 수 없습니다';
+    const cross = segs.reduce((n, [x, y]) => n + crossings(x, y), 0);
+    if (cross && !city.bridges) return '넓은 만은 다리로 건널 수 없습니다';
+    if (cross > lineCross(l) && bridgesUsed() - lineCross(l) + cross > bridges) return '다리가 모자랍니다';
   }
-  if (l.mode === 'ferry' && !s.pier) return '여객선은 선착장끼리만 잇습니다';
-  if (l.mode === 'bus' && n && crossings(l.stops[n - 1], s)) {
-    if (!city.bridges) return '넓은 만은 다리로 건널 수 없습니다';
-    if (bridgesUsed() + crossings(l.stops[n - 1], s) > bridges) return '다리가 모자랍니다';
+  if (l.mode === 'sub') {
+    const mine = l.stops.reduce((n, q, i) => n + (i ? segTrack(l.stops[i - 1], q) : 0), 0);
+    const next = segs.reduce((n, [x, y]) => n + segTrack(x, y), 0);
+    if (next > mine && trackUsed() - mine + next > track + 1e-6) {
+      return segs.some(([x, y]) => crossings(x, y) || crossesMountain(x, y)) ? '선로가 모자랍니다 (터널은 +' + city.tunnel + ')' : '선로가 모자랍니다';
+    }
   }
   return '';
 }
 
-function append(l, s) {
-  const err = appendError(l, s);
-  if (err) { if (err !== 'same') { flash(err); sfxError(); } return false; }
-  l.stops.push(s);
+// 노선의 정류장 목록을 바꾼다. 차량은 처음으로 돌려보내지 않고 가까운 정류장에서 이어 달린다
+function setStops(l, cand) {
+  const old = l.stops;
+  if (cand.length < 2) { dumpLoads(l); l.stops = []; l.vehicles = []; rebuildD(); return; }
+  if (old.length < 2 || l.vehicles.length !== vehCount(l)) { dumpLoads(l); l.stops = cand; resetVehicles(l); rebuildD(); return; }
+  l.stops = cand;
+  const loop = isLoop(l), n = cand.length - (loop ? 1 : 0);
+  for (const v of l.vehicles) {
+    const a = old[v.i], b = v.j == null ? null : old[v.j];
+    let ia = cand.indexOf(a);
+    if (ia < 0) {
+      // 서던 정류장이 노선에서 빠졌다: 가장 가까운 정류장으로 옮기고, 탄 승객은 거기서 내려 다시 길을 찾는다
+      let bd = Infinity;
+      for (let k = 0; k < n; k++) { const dd = dist(cand[k], a); if (dd < bd) { bd = dd; ia = k; } }
+      cand[ia].wait.push(...v.load); v.load = [];
+      v.i = ia; v.j = null; v.t = 0; v.dwell = 0;
+      continue;
+    }
+    if (loop && ia === cand.length - 1) ia = 0;
+    v.i = ia;
+    if (b && cand[ia + 1] === b) { v.j = ia + 1; v.dir = 1; }
+    else if (b && !loop && ia > 0 && cand[ia - 1] === b) { v.j = ia - 1; v.dir = -1; }
+    else { v.j = null; v.t = 0; }
+  }
+  rebuildD();
+}
+
+// 노선 끝(뒤 또는 앞)에 정류장을 붙인다
+function append(l, s, head) {
+  const n = l.stops.length;
+  if (n && isLoop(l)) return false;                        // 이미 닫힌 고리: 끌기 중에는 조용히 무시
+  if (n && (head ? l.stops[0] : l.stops[n - 1]) === s) return false;
+  const closing = n >= 3 && (head ? l.stops[n - 1] : l.stops[0]) === s;
+  if (l.stops.includes(s) && !closing) return false;
+  const cand = head ? [s].concat(l.stops) : l.stops.concat([s]);
+  const err = lineError(l, cand);
+  if (err) { if (err !== 'same') editError(s, err); return false; }
+  setStops(l, cand);
   fxRing(s.x, s.y, l.color, 26, 0.45, 3);
   if (isLoop(l)) { flash('순환 노선 완성!'); sfxHub(); fxRing(s.x, s.y, l.color, 44, 0.8, 4); }
   else sfxConnect(l.stops.length - 1);
-  if (l.stops.length === 2 || l.vehicles.length !== vehCount(l)) resetVehicles(l);
-  for (const v of l.vehicles) v.j = null;
-  rebuildD();
+  return true;
+}
+// 같은 정류장 위에서 손가락을 움직일 때마다 오류음이 반복되지 않게 한 번만 알린다
+let errStop = null;
+function editError(s, err) { if (errStop === s) return; errStop = s; flash(err); sfxError(); }
+
+// 구간 k(정류장 k와 k+1 사이)에 정류장을 끼워 넣는다
+function insertStop(l, k, s) {
+  if (l.stops.includes(s)) return false;
+  const cand = l.stops.slice(); cand.splice(k + 1, 0, s);
+  const err = lineError(l, cand);
+  if (err) { if (err !== 'same') editError(s, err); return false; }
+  setStops(l, cand);
+  fxRing(s.x, s.y, l.color, 30, 0.5, 3); sfxConnect(cand.length - 1);
+  return true;
+}
+// 노선에서 정류장 하나를 뺀다. 앞뒤 정류장이 바로 이어진다
+function removeStop(l, s) {
+  let cand;
+  if (isLoop(l)) {
+    const ring = l.stops.slice(0, -1).filter(x => x !== s);
+    cand = ring.length >= 3 ? ring.concat([ring[0]]) : ring;
+  } else cand = l.stops.filter(x => x !== s);
+  if (cand.length < 2) cand = [];
+  const err = cand.length ? lineError(l, cand) : '';
+  if (err && err !== 'same') { flash('뺄 수 없습니다: ' + err); sfxError(); return false; }
+  setStops(l, cand);
+  fxRing(s.x, s.y, '#888', 30, 0.5, 3); sfxUndo();
+  flash(cand.length ? '정류장을 뺐습니다' : '노선이 비었습니다');
   return true;
 }
 
@@ -920,7 +990,8 @@ function applyCityUI() {
 // 게임 방법: 모든 도시에 공통인 규칙과 그 도시만의 규칙
 const HOWTO_COMMON = [
   '승객(작은 점)의 색은 <b>가려는 구역의 색</b>입니다. 그 구역의 아무 정류장에나 내려 주면 됩니다.',
-  '왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 끝 정류장에서 다시 끌면 연장되고, 첫 정류장으로 돌아오면 순환 노선이 됩니다.',
+  '왼쪽에서 노선을 고르고, 정류장에서 정류장으로 <b>끌어서</b> 잇습니다. 양쪽 끝 정류장 어디서든 다시 끌면 늘어나고, 반대쪽 끝으로 돌아오면 순환 노선이 됩니다.',
+  '<b>노선 고치기</b>: 노선의 선을 잡아 다른 정류장에 놓으면 그 사이에 끼워 넣습니다. 노선 위 정류장을 누르면 \'빼기\'가 나옵니다. 차량은 가까운 정류장에서 이어서 달립니다.',
   '<b>버스</b>는 느리고 6명만 타지만 어디든 깔 수 있습니다. <b>지하철</b>은 빠르고 16명이 타지만 남은 <b>선로 길이</b>만큼만 깔 수 있고, 설 때마다 오래 걸립니다.',
   '<b>환승</b>에는 2초가 걸리고, 승객은 배차 간격까지 따져 빠른 길을 고릅니다. 노선이 길수록 배차가 벌어집니다.',
   '<b>환승 센터</b>로 지정한 정류장은 20명까지 기다릴 수 있고 환승이 빨라집니다. 다시 누르면 해제됩니다.',
@@ -1092,6 +1163,7 @@ function gameOver(reason) {
 
 // ---------- 왼쪽 노선 팔레트 ----------
 function renderTools() {
+  if (popStop && (!sel.stops.includes(popStop) || locked())) hidePop();
   const box = $('tools');
   box.innerHTML = '';
   const list = document.createElement('div');
@@ -1111,7 +1183,7 @@ function renderTools() {
       + '<em>' + (cnt ? (l.stops.length - (isLoop(l) ? 1 : 0)) + '/' + maxStopsOf(l.mode) + '곳 · ' + cnt + '대 · ' + Math.round(hw) + '초' : '미개통') + '</em></span>'
       + '<small title="운송 분담률">' + share + '</small>';
     b.title = '운행 대수 · 배차 간격 · 운송 분담률';
-    b.onclick = () => { sel = l; hubMode = false; sfxClick(); renderTools(); };
+    b.onclick = () => { sel = l; hubMode = false; hidePop(); sfxClick(); renderTools(); };
     list.appendChild(b);
   }
   box.appendChild(list);
@@ -1175,7 +1247,7 @@ cv.addEventListener('pointerdown', e => {
   }
   if (locked()) return;
   const p = toLogical(e), s = stopAt(p);
-  if (!s) return;
+  if (hubMode && !s) return;
   if (hubMode) {
     if (s.hub) {   // 이미 환승 센터면 해제하고 돌려받는다
       if (lines.some(l => l.mode === 'exp' && l.stops.includes(s))) return flash('급행이 서는 환승 센터는 해제할 수 없습니다');
@@ -1190,28 +1262,91 @@ cv.addEventListener('pointerdown', e => {
     rebuildD(); renderTools();
     return;
   }
+  hidePop();
+  downAt = p; moved = false; changed = false; tapStop = null; errStop = null;
+  if (!s) {
+    // 정류장이 아닌 곳: 노선의 선을 잡으면 끼워 넣기 끌기를 시작한다
+    const hit = segAt(p);
+    if (!hit) return;
+    if (sel !== hit.l) { sel = hit.l; hubMode = false; renderTools(); }
+    dragSeg = { l: hit.l, k: hit.k }; pointer = p;
+    cv.setPointerCapture(e.pointerId);
+    return;
+  }
   const l = sel, n = l.stops.length;
-  if (n === 0) { l.stops = [s]; }
-  else if (isLoop(l)) return flash('순환 노선입니다. 고치려면 한 칸 취소를 누르세요');
-  else if (l.stops[0] === s) { dumpLoads(l); l.stops.reverse(); resetVehicles(l); rebuildD(); }
-  else if (l.stops[n - 1] !== s) return flash('노선의 끝 정류장에서 끌어 연장하세요');
+  if (n === 0) { l.stops = [s]; drawHead = false; }
+  else if (!isLoop(l) && l.stops[n - 1] === s) drawHead = false;
+  else if (!isLoop(l) && l.stops[0] === s) drawHead = true;     // 첫 정류장에서 끌면 앞쪽으로 늘린다
+  else if (l.stops.includes(s)) { tapStop = s; cv.setPointerCapture(e.pointerId); return; }   // 가운데 정류장: 누르면 빼기 메뉴
+  else return flash('끝 정류장에서 끌어 늘리거나, 노선의 선을 끌어 정류장에 놓으세요');
+  if (n) tapStop = s;
   drawing = true; pointer = p;
   cv.setPointerCapture(e.pointerId);
 });
+let downAt = null, moved = false, changed = false, tapStop = null, drawHead = false, dragSeg = null;
+// 노선의 선(구간) 가운데 p에서 가장 가까운 것. 고른 노선을 먼저 본다
+function segAt(p) {
+  let best = null, bd = 13;
+  const order = [sel].concat(lines.filter(l => l !== sel && !focusOn));
+  for (const l of order) {
+    if (l.stops.length < 2) continue;
+    const o = lineOffset(l);
+    for (let k = 0; k < l.stops.length - 1; k++) {
+      const a = l.stops[k], b = l.stops[k + 1];
+      const ax = a.x + o.x, ay = a.y + o.y, dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+      const u = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / l2));
+      const dd = Math.hypot(ax + dx * u - p.x, ay + dy * u - p.y);
+      if (dd < bd - (l === sel ? 0 : 3)) { bd = dd; best = { l, k }; }
+    }
+    if (best && best.l === sel) break;
+  }
+  return best;
+}
 cv.addEventListener('pointermove', e => {
-  if (!drawing) return;
+  if (!drawing && !dragSeg && !tapStop) return;
   pointer = toLogical(e);
+  if (downAt && dist(pointer, downAt) > 9) moved = true;
   const s = stopAt(pointer);
-  if (s) append(sel, s);
+  if (!s) errStop = null;
+  if (dragSeg) {
+    if (s && insertStop(dragSeg.l, dragSeg.k, s)) { dragSeg.k++; changed = true; }   // 이어서 끌면 다음 정류장도 끼워 넣는다
+    return;
+  }
+  if (drawing && s && append(sel, s, drawHead)) changed = true;
 });
 const endDraw = () => {
-  if (!drawing) return;
-  drawing = false; pointer = null;
-  if (sel.stops.length < 2) { sel.stops = []; resetVehicles(sel); rebuildD(); }
-  renderTools();
+  const wasTap = tapStop && !moved && !changed ? tapStop : null;
+  if (dragSeg) { dragSeg = null; pointer = null; renderTools(); return; }
+  tapStop = null;
+  if (drawing) {
+    drawing = false; pointer = null;
+    if (sel.stops.length < 2) { sel.stops = []; resetVehicles(sel); rebuildD(); }
+    renderTools();
+  }
+  if (wasTap && sel.stops.includes(wasTap)) showPop(wasTap);
 };
 cv.addEventListener('pointerup', endDraw);
 cv.addEventListener('pointercancel', endDraw);
+
+// 정류장 빼기 메뉴: 노선 위 정류장을 누르면 그 위에 뜬다
+let popStop = null;
+function showPop(s) {
+  popStop = s;
+  const el = $('stopPop');
+  el.style.setProperty('--c', sel.color);
+  $('popDel').innerHTML = icon('minus', 14) + '<span>' + (MODES[sel.mode].short || MODES[sel.mode].name) + ' ' + sel.n + '에서 빼기</span>';
+  el.classList.remove('hide');
+  const w = el.offsetWidth, h = el.offsetHeight, box = $('wrap');
+  const x = ox + s.x * scale, y = oy + s.y * scale;
+  el.style.left = Math.max(4, Math.min(box.clientWidth - w - 4, x - w / 2)) + 'px';
+  el.style.top = (y - h - 16 < 4 ? y + 18 : y - h - 16) + 'px';
+}
+function hidePop() { popStop = null; $('stopPop').classList.add('hide'); }
+$('popDel').onclick = e => {
+  e.stopPropagation();
+  if (popStop && sel.stops.includes(popStop) && !locked()) removeStop(sel, popStop);
+  hidePop(); renderTools();
+};
 
 let last = performance.now();
 function frame(now) {

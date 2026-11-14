@@ -256,7 +256,7 @@ function draw(t) {
     c.globalAlpha = focusOn && l !== sel ? 0.13 : 1;     // 한 노선만 보기: 나머지는 흐리게
     const o = lineOffset(l), m = MODES[l.mode], pts = l.stops.map(p => ({ x: p.x + o.x, y: p.y + o.y }));
     const live = drawing && l === sel && pointer;
-    const path = extra => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); if (extra) c.lineTo(pointer.x, pointer.y); };
+    const path = extra => { c.beginPath(); if (extra && drawHead) c.moveTo(pointer.x, pointer.y); pts.forEach((p, i) => i || (extra && drawHead) ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)); if (extra && !drawHead) c.lineTo(pointer.x, pointer.y); };
     if (l === sel) { path(live); c.strokeStyle = 'rgba(255,205,40,' + (0.45 + 0.2 * Math.sin(t * 5)) + ')'; c.lineWidth = m.w + 9; c.stroke(); }
     path(); c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = m.w + 3; c.stroke();
     path(); c.strokeStyle = l.color; c.lineWidth = m.w; c.stroke();
@@ -264,8 +264,18 @@ function draw(t) {
     if (l.mode === 'ferry') { path(); c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 2; c.setLineDash([1, 7]); c.stroke(); c.setLineDash([]); }
     if (l.mode === 'exp') { path(); c.strokeStyle = '#fff3c4'; c.lineWidth = 2; c.stroke(); }
     if (live) {
-      c.beginPath(); c.moveTo(pts[pts.length - 1].x, pts[pts.length - 1].y); c.lineTo(pointer.x, pointer.y);
+      const end = drawHead ? pts[0] : pts[pts.length - 1];
+      c.beginPath(); c.moveTo(end.x, end.y); c.lineTo(pointer.x, pointer.y);
       c.strokeStyle = l.color; c.lineWidth = m.w; c.setLineDash([7, 7]); c.lineDashOffset = -t * 30; c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
+    }
+    // 구간 끌기: 잡은 구간을 점선으로 손가락까지 휘어 보인다
+    if (dragSeg && dragSeg.l === l && pointer && pts[dragSeg.k + 1]) {
+      const a = pts[dragSeg.k], b = pts[dragSeg.k + 1];
+      c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y);
+      c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = m.w + 4; c.stroke();
+      c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(pointer.x, pointer.y); c.lineTo(b.x, b.y);
+      c.strokeStyle = l.color; c.lineWidth = m.w; c.setLineDash([7, 7]); c.lineDashOffset = -t * 30; c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
+      c.fillStyle = l.color; c.beginPath(); c.arc(pointer.x, pointer.y, 6, 0, Math.PI * 2); c.fill();
     }
     // 지하철이 강 밑으로 지나는 자리: 물에 잠긴 것처럼 덮는다
     if (l.mode === 'sub') {
