@@ -1,7 +1,7 @@
 'use strict';
 // 효과음과 배경음. 음원 파일 없이 Web Audio로 합성한다.
 const AU = { ctx: null, muted: false, master: null, sfx: null, bgm: null, bgmFilter: null, noise: null,
-  nextStep: 0, step: 0, key: 'am', lastPing: 0, lastWarn: 0 };
+  nextStep: 0, step: 0, key: 'am', lastPing: 0, lastWarn: 0, bgmVol: 1, sfxVol: 1 };
 
 const midi = n => 440 * Math.pow(2, (n - 69) / 12);
 
@@ -13,10 +13,10 @@ function audioInit() {
   const comp = ctx.createDynamicsCompressor();
   comp.connect(ctx.destination);
   AU.master = ctx.createGain(); AU.master.gain.value = AU.muted ? 0 : 0.9; AU.master.connect(comp);
-  AU.sfx = ctx.createGain(); AU.sfx.gain.value = 0.8; AU.sfx.connect(AU.master);
+  AU.sfx = ctx.createGain(); AU.sfx.gain.value = 0.8 * AU.sfxVol; AU.sfx.connect(AU.master);
   AU.bgmFilter = ctx.createBiquadFilter(); AU.bgmFilter.type = 'lowpass'; AU.bgmFilter.frequency.value = 7000;
   AU.bgmFilter.connect(AU.master);
-  AU.bgm = ctx.createGain(); AU.bgm.gain.value = 0.55; AU.bgm.connect(AU.bgmFilter);
+  AU.bgm = ctx.createGain(); AU.bgm.gain.value = 0.55 * AU.bgmVol; AU.bgm.connect(AU.bgmFilter);
   // 배경음에만 거는 가벼운 메아리
   const delay = ctx.createDelay(1); delay.delayTime.value = 0.31;
   const fb = ctx.createGain(); fb.gain.value = 0.28;
@@ -28,6 +28,13 @@ function audioInit() {
   AU.nextStep = ctx.currentTime + 0.15;
 }
 
+// 설정 화면의 음량(0~1)
+function setVolumes(bgm, sfx) {
+  AU.bgmVol = bgm; AU.sfxVol = sfx;
+  if (!AU.ctx) return;
+  AU.bgm.gain.setTargetAtTime(0.55 * bgm, AU.ctx.currentTime, 0.05);
+  AU.sfx.gain.setTargetAtTime(0.8 * sfx, AU.ctx.currentTime, 0.05);
+}
 function setMuted(m) {
   AU.muted = m;
   if (AU.ctx) AU.master.gain.setTargetAtTime(m ? 0 : 0.9, AU.ctx.currentTime, 0.03);

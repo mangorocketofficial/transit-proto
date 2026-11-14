@@ -469,6 +469,34 @@ function draw(t) {
 
   if (FX.flash > 0) { c.fillStyle = 'rgba(210,30,30,' + 0.45 * FX.flash + ')'; c.fillRect(0, 0, W, H); }
 
+  // 졌을 때: 막힌 정류장만 밝게 남기고 나머지를 어둡게
+  if (over && failStop) {
+    const fx = failStop.x, fy = failStop.y, pr = 40 + Math.sin(t * 5) * 4;
+    c.save();
+    c.fillStyle = 'rgba(20,24,30,0.55)';
+    c.beginPath(); c.rect(0, 0, W, H); c.arc(fx, fy, pr, 0, Math.PI * 2, true); c.fill();
+    c.strokeStyle = '#ff5050'; c.lineWidth = 4; c.beginPath(); c.arc(fx, fy, pr, 0, Math.PI * 2); c.stroke();
+    c.font = 'bold 15px sans-serif'; c.lineWidth = 4; c.strokeStyle = 'rgba(20,24,30,0.9)'; c.fillStyle = '#fff';
+    const ly = fy - pr - 14 < 14 ? fy + pr + 16 : fy - pr - 14;
+    c.strokeText('여기가 막혔습니다', fx, ly); c.fillText('여기가 막혔습니다', fx, ly);
+    c.restore();
+  }
+  // 튜토리얼: 끌어야 할 길을 손가락이 따라 움직인다
+  const hint = typeof tutHint === 'function' ? tutHint() : null;
+  if (hint && hint.drag) {
+    const [a, b] = hint.drag, k = (t % 1.8) / 1.8, e = k < 0.15 ? 0 : k > 0.8 ? 1 : (k - 0.15) / 0.65;
+    const ease = e * e * (3 - 2 * e), hx = a.x + (b.x - a.x) * ease, hy = a.y + (b.y - a.y) * ease;
+    c.save();
+    c.strokeStyle = 'rgba(47,143,91,0.85)'; c.lineWidth = 4; c.setLineDash([8, 7]); c.lineDashOffset = -t * 30;
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); c.setLineDash([]);
+    for (const q of [a, b]) { c.strokeStyle = 'rgba(47,143,91,' + (0.9 - ((t * 1.5) % 1) * 0.8) + ')'; c.lineWidth = 3; c.beginPath(); c.arc(q.x, q.y, 16 + ((t * 1.5) % 1) * 14, 0, Math.PI * 2); c.stroke(); }
+    c.globalAlpha = k > 0.9 ? (1 - k) * 10 : 1;
+    c.fillStyle = 'rgba(255,255,255,0.95)'; c.beginPath(); c.arc(hx, hy, 9, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#2f8f5b'; c.lineWidth = 3; c.stroke();
+    c.font = '26px sans-serif'; c.fillText('👆', hx + 9, hy + 18);
+    c.restore();
+  }
+
   // 안내 문구
   if (msg && performance.now() < msgUntil) {
     c.font = 'bold 14px sans-serif';

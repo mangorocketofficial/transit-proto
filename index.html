@@ -66,6 +66,30 @@ button.line.on { background: #fff; box-shadow: 0 0 0 2px var(--c), 0 2px 5px rgb
   border: 3px solid #c9bf9f; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 3px 0 rgba(120,105,70,0.25), 0 6px 14px rgba(60,50,30,0.14); background: #d5d9c2; }
 canvas { display: block; touch-action: none; }
 .pop { position: absolute; z-index: 5; }
+.coach { position: absolute; z-index: 4; top: 8px; left: 50%; transform: translateX(-50%); width: min(470px, calc(100% - 16px));
+  background: rgba(255,253,246,0.97); border: 2px solid var(--accent); border-radius: 13px; padding: 8px 12px; box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+  font-size: 13px; line-height: 1.45; display: flex; align-items: center; gap: 10px; }
+.coach.hide { display: none; }
+.coach .cstep { font-size: 11px; font-weight: 800; color: #fff; background: var(--accent); border-radius: 9px; padding: 2px 7px; white-space: nowrap; }
+.coach .ctext { flex: 1; }
+.coach .cbtns { display: flex; flex-direction: column; gap: 4px; }
+.coach button { font-size: 11px; font-weight: 700; color: var(--mute); padding: 3px 6px; white-space: nowrap; }
+.coach button.go { color: #fff; background: var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 800; }
+.acts button.tut { animation: tutPulse 0.9s ease-in-out infinite; border-color: var(--accent); }
+@keyframes tutPulse { 50% { box-shadow: 0 0 0 4px rgba(47,143,91,0.45); background: #e3f4e8; } }
+.set { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.set label { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.set label span { width: 56px; }
+.set input[type=range] { flex: 1; accent-color: var(--accent); }
+.set label b { width: 38px; text-align: right; font-size: 12px; color: var(--mute); }
+.set .chk input { width: 20px; height: 20px; accent-color: var(--accent); }
+.setbtns { display: flex; gap: 8px; margin-bottom: 8px; }
+.btn.danger { background: #fff; color: var(--warn); border: 2px solid var(--warn); box-shadow: 0 3px 0 var(--warn); font-size: 14px; }
+.tips { background: var(--paper2); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; margin: 0 0 8px; font-size: 12.5px; line-height: 1.45; }
+.tips:empty { display: none; }
+.tips .th { font-weight: 800; margin-bottom: 2px; }
+.tips ul { margin: 2px 0 0; padding-left: 16px; }
+.tips .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 2px; border: 1px solid rgba(0,0,0,0.3); }
 .pop.hide { display: none; }
 .pop button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 10px; background: #fff; color: #c0392b;
   font-size: 13px; font-weight: 800; border: 2px solid var(--c, #c0392b); box-shadow: 0 3px 0 rgba(0,0,0,0.18); white-space: nowrap; }
@@ -141,6 +165,7 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
     <button id="homeBtn" title="도시 선택으로"><span data-ic="home"></span></button>
     <button id="saveBtn" title="저장"><span data-ic="save"></span></button>
     <button id="muteBtn" title="소리"></button>
+    <button id="setBtn" title="설정"><span data-ic="gear"></span></button>
   </div>
   <div class="ctl card">
     <button data-speed="0" title="멈춤"><span data-ic="pause"></span></button>
@@ -153,6 +178,8 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
   <div id="wrap">
     <canvas id="cv"></canvas>
     <div id="stopPop" class="pop hide"><button id="popDel"></button></div>
+    <div id="coach" class="coach hide"><div class="cstep" id="cStep"></div><div class="ctext" id="cText"></div>
+      <div class="cbtns"><button id="cSkip">건너뛰기</button><button id="cNext" class="go" style="display:none"></button></div></div>
     <div id="start" class="overlay"><div class="panel card" style="max-width:660px">
       <h2>노선 짜기</h2>
       <div class="sub">도시를 골라 교통국장으로 부임하세요. 8일을 버티면 완주이고 다음 도시가 열립니다.</div>
@@ -171,6 +198,19 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
       <div id="rGrade" class="grade"></div>
       <div class="rewards"><button id="r0"></button><button id="r1"></button><button id="r2"></button><button id="r3"></button></div>
     </div></div>
+    <div id="settings" class="overlay hide"><div class="panel card" style="max-width:420px">
+      <h2>설정</h2>
+      <div class="set">
+        <label><span>배경음</span><input type="range" id="sBgm" min="0" max="100" step="5"><b id="sBgmV"></b></label>
+        <label><span>효과음</span><input type="range" id="sSfx" min="0" max="100" step="5"><b id="sSfxV"></b></label>
+        <label class="chk"><span>진동</span><input type="checkbox" id="sVib"><i></i></label>
+      </div>
+      <div class="setbtns">
+        <button id="sTut" class="btn ghost">튜토리얼 다시 하기</button>
+        <button id="sReset" class="btn danger">진행 초기화</button>
+      </div>
+      <div class="btnrow"><button id="sClose" class="btn">닫기</button></div>
+    </div></div>
     <div id="over" class="overlay hide"><div class="panel card" style="max-width:440px">
       <h2 id="oTitle">정류장 마비!</h2>
       <div class="sub"><b id="oCity"></b><span id="oWhy"></span></div>
@@ -179,13 +219,14 @@ details summary { cursor: pointer; font-size: 12px; color: var(--mute); font-wei
         <div><b id="oDelivered"></b>명 수송</div>
         <div><b id="oPop"></b>인구</div>
       </div>
+      <div id="oTips" class="tips"></div>
       <p id="oBest" style="margin:0 0 8px;text-align:center;font-weight:700"></p>
       <div class="btnrow"><button id="retryBtn" class="btn blue">같은 지도로 다시</button><button id="againBtn" class="btn">새 지도로</button></div>
     </div></div>
   </div>
 </div>
-<script src="audio.js?v=14"></script>
-<script src="render.js?v=14"></script>
+<script src="audio.js?v=15"></script>
+<script src="render.js?v=15"></script>
 <script>
 'use strict';
 // ---------- 수치 ----------
@@ -839,6 +880,9 @@ function step(dt) {
     if (s.wait.length > capOf(s)) s.over += dt / OVER_SEC;
     else s.over = Math.max(0, s.over - dt / OVER_SEC * 0.7);
     if (s.over >= 1) over = true;
+    // 처음 반쯤 찼을 때 한 번 크게 알린다
+    if (s.over > 0.5 && !s.warned) { s.warned = true; flash(stopName(s) + '이 넘칩니다! 노선을 잇거나 증차하세요'); buzz(70); }
+    else if (s.over === 0) s.warned = false;
     // 너무 오래 기다린 승객은 0점으로 한 번만 집계한다(끝내 못 가도 성적에 잡히게)
     for (const p of s.wait) if (!p.gave && now - p.born > p.ideal * 3 + 20) { p.gave = true; recordTrip(p.from, 0); }
   }
@@ -959,6 +1003,7 @@ const ICON = {
   cable: '<path d="M2 6l20-3"/><path d="M12 4.5V9"/><rect x="6" y="9" width="12" height="10" rx="2.5"/><path d="M6 14h12"/>',
   bolt: '<path d="M13 2L5 13h6l-1 9 8-12h-6z"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/><circle cx="12" cy="12" r="6.5"/>',
   home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
 };
 const icon = (name, size) => '<svg class="ic" viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) + '">' + ICON[name] + '</svg>';
@@ -1000,6 +1045,7 @@ const HOWTO_COMMON = [
   '<b>지도 번호</b>: 끝난 뒤 \'같은 지도로 다시\'를 누르면 같은 지형, 같은 정류장 자리, 같은 성장 순서로 다시 할 수 있습니다.',
   '<b>시민 만족도</b>: 승객이 빨리, 덜 갈아타고 도착할수록 올라갑니다. 하루 평균이 높으면 지원 선택지가 늘고(80% 이상 4개, 55% 미만 2개), 이틀 연속 40% 미만이면 해임됩니다.',
   '하루가 끝나면 시의회 지원 중 하나를 고릅니다. 8일을 넘기면 완주입니다.',
+  '오른쪽 위 <b>톱니바퀴</b>에서 소리 크기와 진동을 바꾸고, 튜토리얼을 다시 볼 수 있습니다.',
   '정류장에 정원보다 많이 오래 쌓이면(빨간 고리) 끝납니다. 멈춘 상태에서도 노선을 고칠 수 있습니다.',
 ];
 const HOWTO_CITY = {
@@ -1129,6 +1175,7 @@ function newGame(seed) {
   upg = { cap: {}, speed: {}, stops: 0 }; crowdLv = 0; focusOn = false;
   hubMode = false; now = 0; pendingStop = null; cleared = false; clock = 0; delivered = 0; over = false;
   stopTimer = Infinity; rewardOpts = null; drawing = false; lastPhase = 'am'; bgDirty = true;
+  failStop = null;
   dayS = { sum: 0, n: 0 }; lowDays = 0; graded = false; FX.flash = 0; FX.shake = 0; FX.parts = []; FX.rings = []; FX.floats = [];
   rebuildD();
   // 주거 2곳, 업무 1곳, 상업 1곳에 정류장 하나씩
@@ -1145,8 +1192,45 @@ function newGame(seed) {
   renderTools();
 }
 
+const stopName = s => s.pier ? '선착장' : TYPE_NAME[districts[s.d].type] + ' 정류장';
+const dot = d => '<span class="dot" style="background:' + d.color + '"></span>';
+// 왜 졌는지: 막힌 정류장을 살펴 고칠 점을 찾는다
+function failTips(s) {
+  const tips = [], ls = lines.filter(l => l.stops.length > 1 && l.stops.includes(s));
+  const head = (s.d >= 0 ? dot(districts[s.d]) : '') + stopName(s) + '에 ' + s.wait.length + '명이 몰렸습니다 (정원 ' + capOf(s) + '명)';
+  const cnt = {};
+  for (const q of s.wait) cnt[q.dest] = (cnt[q.dest] || 0) + 1;
+  const lost = Object.keys(cnt).filter(k => D[k] && D[k][s.idx] === Infinity);
+  if (!ls.length) tips.push('이 정류장에는 다니는 노선이 없었습니다. 가까운 노선의 선을 끌어 이 정류장에 끼워 넣어 보세요.');
+  if (lost.length) {
+    const n = lost.reduce((m, k) => m + cnt[k], 0);
+    tips.push(lost.map(k => dot(districts[k]) + TYPE_NAME[districts[k].type]).join(', ') + ' 구역으로 가는 길이 없어 ' + n + '명이 발이 묶였습니다. 그 구역까지 노선을 이어 주세요.');
+  }
+  if (ls.length) {
+    const hw = Math.min(...ls.map(headway));
+    if (hw > 14) tips.push('배차 간격이 ' + Math.round(hw) + '초였습니다. 증차하거나 긴 노선을 둘로 나눠 보세요.');
+    const missed = s.wait.filter(q => q.miss).length;
+    if (missed >= 3) tips.push('차가 꽉 차서 못 탄 승객이 ' + missed + '명이었습니다. 증차하거나 더 큰 차량(지하철)으로 옮겨 보세요.');
+    if (!s.hub && hubs > 0) tips.push('환승 센터로 지정하면 20명까지 기다릴 수 있습니다. 남은 환승 센터가 ' + hubs + '개 있었습니다.');
+  }
+  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+  if (top && !lost.includes(top[0]) && tips.length < 3) tips.push('가장 많은 승객(' + top[1] + '명)이 ' + dot(districts[top[0]]) + TYPE_NAME[districts[top[0]].type] + ' 구역으로 가려 했습니다. 그쪽으로 곧장 가는 노선이 있으면 빨라집니다.');
+  if (!tips.length) tips.push('승객이 늘어나는 속도를 노선이 따라가지 못했습니다. 노선을 더 짧게 여러 개로 나누고 차량을 고르게 배치해 보세요.');
+  return '<div class="th">' + head + '</div><ul>' + tips.slice(0, 3).map(x => '<li>' + x + '</li>').join('') + '</ul>';
+}
+function firedTips() {
+  const ds = districts.filter(d => stops.some(s => s.d === d.id)).sort((a, b) => a.sat - b.sat);
+  const w = ds[0];
+  if (!w) return '';
+  return '<div class="th">가장 불만이 큰 곳: ' + dot(w) + TYPE_NAME[w.type] + ' 구역 ' + Math.round(w.sat) + '%</div><ul>'
+    + '<li>오래 기다리거나 여러 번 갈아탄 승객이 많을수록 만족도가 떨어집니다.</li>'
+    + '<li>이 구역에서 목적지까지 갈아타지 않고 가는 노선을 만들고, 배차 간격을 줄여 보세요.</li></ul>';
+}
+let failStop = null;
 function gameOver(reason) {
-  FX.shake = 1; FX.flash = 1; sfxOver(); clearSave();
+  FX.shake = 1; FX.flash = 1; sfxOver(); clearSave(); buzz([90, 60, 180]);
+  failStop = reason === 'fired' ? null : stops.reduce((m, s) => (!m || s.over > m.over ? s : m), null);
+  $('oTips').innerHTML = reason === 'fired' ? firedTips() : failStop ? failTips(failStop) : '';
   $('reward').classList.add('hide');
   $('oTitle').textContent = reason === 'fired' ? '해임되었습니다' : '정류장 마비!';
   $('oWhy').textContent = reason === 'fired' ? '시민 만족도가 ' + FIRE_DAYS + '일 연속 ' + FIRE_BELOW + '% 미만이었습니다.' : '의 교통이 멈췄습니다.';
@@ -1158,7 +1242,8 @@ function gameOver(reason) {
   $('oPop').textContent = population().toLocaleString();
   $('oDelivered').textContent = delivered;
   $('oBest').textContent = isBest ? '최고 기록 갱신!' : '최고 기록 ' + prev + '명';
-  $('over').classList.remove('hide');
+  // 막힌 정류장을 먼저 비춰 주고 잠시 뒤 결과를 띄운다
+  setTimeout(() => { if (over) $('over').classList.remove('hide'); }, failStop ? 1700 : 300);
 }
 
 // ---------- 왼쪽 노선 팔레트 ----------
@@ -1203,7 +1288,8 @@ function renderTools() {
     grid.appendChild(b);
     return b;
   };
-  act('plus', '증차', addVehicle);
+  const plusB = act('plus', '증차', addVehicle);
+  if (tut && TUT[tut.i] && TUT[tut.i].tool === 'plus') plusB.classList.add('tut');
   act('minus', '감차', removeVehicle);
   act('undo', '한 칸 취소', l => { undoLast(l); sfxUndo(); });
   act('trash', '지우기', l => { clearLine(l); sfxUndo(); }, 'danger');
@@ -1351,12 +1437,13 @@ $('popDel').onclick = e => {
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);   // 먼저 예약: 한 프레임에서 오류가 나도 화면이 멈추지 않게
-  const dt = Math.min(0.1, (now - last) / 1000) * speed;
+  const rdt = Math.min(0.1, (now - last) / 1000), dt = rdt * speed;
   last = now;
-  if (started && !over && !rewardOpts && !siteChoice && dt > 0) step(dt);
+  if (started && !over && !rewardOpts && !siteChoice && !settingsOpen && !tutFreeze() && dt > 0) step(dt);
+  if (!settingsOpen) tutTick(tutFreeze() ? rdt : dt);
   draw(now / 1000);
   const crowd = stops.reduce((m, s) => Math.max(m, s.over), 0);
-  bgmTick(phase(), crowd, speed === 0 || !started || over || !!rewardOpts);
+  bgmTick(phase(), crowd, speed === 0 || !started || over || !!rewardOpts || settingsOpen);
   // 위쪽 줄: 도시 시계, 다음 시간대 예고(10초 전부터), 자원
   const f = clock / DAY, cut = f < 0.35 ? 0.35 : f < 0.65 ? 0.65 : 1, left = (cut - f) * DAY;
   const nextName = cut === 0.35 ? PHASE_NAME.mid : cut === 0.65 ? PHASE_NAME.pm : '하루 끝';
@@ -1379,10 +1466,112 @@ function frame(now) {
   if (city.special) $('vFerry').textContent = spare[city.special] || 0;
 }
 
-document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
-  speed = +b.dataset.speed;
-  document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
-});
+function setSpeed(v) {
+  speed = v; autoPaused = false;
+  document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', +x.dataset.speed === v));
+}
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => setSpeed(+b.dataset.speed));
+
+// ---------- 설정 ----------
+const SET_KEY = 'transit-settings';
+const SET = Object.assign({ bgm: 70, sfx: 80, vib: true }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
+function applySettings() {
+  setVolumes(SET.bgm / 100, SET.sfx / 100);
+  $('sBgm').value = SET.bgm; $('sSfx').value = SET.sfx; $('sVib').checked = SET.vib;
+  $('sBgmV').textContent = SET.bgm + '%'; $('sSfxV').textContent = SET.sfx + '%';
+  try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) {}
+}
+function buzz(pattern) { if (SET.vib && navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} } }
+let settingsOpen = false;
+$('setBtn').onclick = () => { sfxClick(); settingsOpen = true; resetArmed = false; $('sReset').textContent = '진행 초기화'; $('settings').classList.remove('hide'); };
+$('sClose').onclick = () => { sfxClick(); settingsOpen = false; $('settings').classList.add('hide'); };
+$('sBgm').oninput = () => { SET.bgm = +$('sBgm').value; applySettings(); };
+$('sSfx').oninput = () => { SET.sfx = +$('sSfx').value; applySettings(); };
+$('sSfx').onchange = () => sfxDeliver(2);
+$('sVib').onchange = () => { SET.vib = $('sVib').checked; applySettings(); buzz(40); };
+let resetArmed = false;
+$('sReset').onclick = () => {
+  if (!resetArmed) { resetArmed = true; $('sReset').textContent = '한 번 더 누르면 초기화'; sfxWarn(); return; }
+  for (const k of [SAVE_KEY, PROG_KEY, BEST_KEY, SEED_KEY, TUT_KEY]) { try { localStorage.removeItem(k); } catch (e) {} }
+  settingsOpen = false; $('settings').classList.add('hide');
+  endTut(false); started = false; over = false; newGame(); showStart(); flashCity('진행 상황을 모두 지웠습니다');
+};
+$('sTut').onclick = () => {
+  settingsOpen = false; $('settings').classList.add('hide');
+  if (started && !over) saveGame();
+  city = CITIES[0]; newGame(); beginGame(); startTut();
+};
+
+// ---------- 백그라운드 일시정지: 앱을 내리거나 탭을 가리면 멈추고 소리를 끈다 ----------
+let autoPaused = false;
+function appPause() {
+  saveGame();
+  if (started && !over && speed !== 0) { setSpeed(0); autoPaused = true; }
+  if (AU.ctx && AU.ctx.state === 'running') AU.ctx.suspend();
+}
+function appResume() {
+  if (autoPaused) flash('일시정지했습니다 · ▶를 누르면 이어집니다');
+  // 소리는 다음 터치 때 audioInit이 다시 켠다(화면이 보일 때만)
+  if (AU.ctx && AU.ctx.state === 'suspended' && !document.hidden) AU.ctx.resume();
+}
+window.appPause = appPause; window.appResume = appResume;
+
+// ---------- 첫 판 튜토리얼 ----------
+const TUT_KEY = 'transit-tut';
+const tutDone = () => { try { return !!localStorage.getItem(TUT_KEY); } catch (e) { return true; } };
+let tut = null;     // { i: 단계, t: 단계 경과 시간, a, b, c: 안내할 정류장 }
+const segMid = l => { const o = lineOffset(l), a = l.stops[0], b = l.stops[1]; return { x: (a.x + b.x) / 2 + o.x, y: (a.y + b.y) / 2 + o.y }; };
+const TUT = [
+  { text: '<b>정류장에서 정류장으로 끌어서</b> 버스 노선을 이어 보세요.', freeze: true,
+    hint: () => ({ drag: [tut.a, tut.b] }), done: () => lines[0].stops.length >= 2 },
+  { text: '버스가 승객을 태웁니다. 승객 점의 <b>색은 가려는 구역의 색</b>입니다. 같은 색 구역에 내려 주면 됩니다.',
+    // 바로 보이도록 첫 정류장에 승객 몇 명을 세워 둔다
+    start: () => { for (let k = 0; k < 3; k++) tut.a.wait.push({ dest: tut.b.d, from: tut.a.d, born: now, ideal: idealTime(tut.a, tut.b.d) }); },
+    done: () => delivered >= 2 || tut.t > 25 },
+  { text: '노선의 <b>선을 잡아</b> 다른 정류장에 놓으면 그 사이에 끼워 넣습니다. 해 보세요.', freeze: true,
+    start: () => { const m = segMid(lines[0]); tut.c = stops.filter(s => !lines[0].stops.includes(s)).sort((x, y) => dist(x, m) - dist(y, m))[0]; },
+    hint: () => lines[0].stops.length >= 2 && tut.c ? { drag: [segMid(lines[0]), tut.c] } : null, done: () => lines[0].stops.length >= 3 },
+  { text: '왼쪽 <b>증차</b>를 누르면 버스가 늘어 배차가 빨라집니다.', freeze: true, tool: 'plus', done: () => lines[0].extra > 0 },
+  { text: '정류장에 승객이 넘치면 <b>빨간 고리</b>가 찹니다. 다 차면 끝! 하루가 끝나면 시의회 지원을 하나 고릅니다. <b>8일</b>을 버텨 보세요.', next: '시작하기' },
+];
+function startTut() {
+  const R = stops.find(s => s.d >= 0 && districts[s.d].type === 'R');
+  const others = stops.filter(s => s.d >= 0 && districts[s.d].type === 'O');
+  if (!R || !others.length) return;
+  for (const l of lines) { l.stops = []; l.vehicles = []; }
+  rebuildD(); sel = lines[0]; setSpeed(1);
+  tut = { i: -1, t: 0, a: R, b: others.sort((x, y) => dist(x, R) - dist(y, R))[0] };
+  tutGo(0);
+}
+function tutGo(i) {
+  if (i >= TUT.length) return endTut(true);
+  tut.i = i; tut.t = 0;
+  const s = TUT[i];
+  if (s.start) s.start();
+  $('cStep').textContent = (i + 1) + ' / ' + TUT.length;
+  $('cText').innerHTML = s.text;
+  $('cNext').style.display = s.next ? '' : 'none';
+  if (s.next) $('cNext').textContent = s.next;
+  $('cSkip').style.display = s.next ? 'none' : '';
+  $('coach').classList.remove('hide');
+  renderTools();
+  if (i) sfxReward();
+}
+function endTut(done) {
+  if (done) { try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {} }
+  tut = null; $('coach').classList.add('hide');
+  if (sel) renderTools();
+}
+function tutTick(dt) {
+  if (!tut || !started || over) return;
+  tut.t += dt;
+  const s = TUT[tut.i];
+  if (s.done && s.done()) tutGo(tut.i + 1);
+}
+const tutFreeze = () => tut && TUT[tut.i] && TUT[tut.i].freeze;
+const tutHint = () => tut && TUT[tut.i] && TUT[tut.i].hint ? TUT[tut.i].hint() : null;
+$('cSkip').onclick = () => { sfxClick(); endTut(true); flash('튜토리얼은 설정에서 다시 볼 수 있습니다'); };
+$('cNext').onclick = () => { sfxClick(); tutGo(tut.i + 1); };
 // 지난번에 도시마다 어떤 지도로 했는지 기억해 둔다(같은 지도로 다시 하기)
 const SEED_KEY = 'transit-lastseed';
 function lastSeeds() { try { return JSON.parse(localStorage.getItem(SEED_KEY)) || {}; } catch (e) { return {}; } }
@@ -1391,7 +1580,7 @@ function beginGame() {
   try { const m = lastSeeds(); m[city.id] = mapSeed; localStorage.setItem(SEED_KEY, JSON.stringify(m)); } catch (e) {}
   flash(city.name + ' · ' + city.tag + ' · 지도 #' + mapSeed);
 }
-$('startBtn').onclick = beginGame;
+$('startBtn').onclick = () => { beginGame(); if (!tutDone() && city.id === CITIES[0].id) startTut(); };
 $('sameBtn').onclick = () => { sfxClick(); newGame(lastSeeds()[city.id]); beginGame(); };
 $('retryBtn').onclick = () => { sfxClick(); clearSave(); newGame(mapSeed); beginGame(); };
 $('contBtn').onclick = () => { audioInit(); if (loadGame()) { $('start').classList.add('hide'); started = true; sfxDayEnd(); } };
@@ -1401,7 +1590,7 @@ $('homeBtn').onclick = () => {
   sfxClick();
   if (!started) return;
   saveGame();
-  started = false; hubMode = false; drawing = false;
+  started = false; hubMode = false; drawing = false; endTut(false);
   $('reward').classList.add('hide'); $('over').classList.add('hide');
   newGame();      // 화면 뒤에는 같은 도시의 새 판을 깔아 둔다. 하던 판은 이어하기로 돌아온다
   showStart();
@@ -1409,11 +1598,12 @@ $('homeBtn').onclick = () => {
 // 자동 저장: 5초마다, 그리고 화면을 떠날 때
 setInterval(() => { if (!rewardOpts) saveGame(); }, 5000);
 addEventListener('pagehide', () => saveGame());
-document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) appPause(); else appResume(); });
+applySettings();
 $('muteBtn').innerHTML = icon('sound', 16);
 $('muteBtn').onclick = () => { audioInit(); setMuted(!AU.muted); $('muteBtn').innerHTML = icon(AU.muted ? 'mute' : 'sound', 16); };
 addEventListener('pointerdown', audioInit, { passive: true });
-$('againBtn').onclick = () => { clearSave(); started = false; newGame(); showStart(); };
+$('againBtn').onclick = () => { clearSave(); started = false; endTut(false); newGame(); showStart(); };
 $('r0').onclick = () => takeReward(0);
 $('r1').onclick = () => takeReward(1);
 $('r2').onclick = () => takeReward(2);

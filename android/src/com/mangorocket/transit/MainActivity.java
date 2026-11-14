@@ -52,13 +52,17 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        web.evaluateJavascript("window.appPause && appPause()", null);   // 저장하고 멈춘 뒤 소리를 끈다
         web.onPause();
+        web.pauseTimers();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        web.resumeTimers();
         web.onResume();
+        web.evaluateJavascript("window.appResume && appResume()", null);
     }
 
     // 뒤로 가기는 앱을 끄지 않고 뒤로 보낸다(진행 중인 판을 지키기 위해)
